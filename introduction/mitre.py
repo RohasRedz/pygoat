@@ -1,247 +1,113 @@
-import datetime
-import re
+import os
+import shlex
 import subprocess
-from hashlib import md5
+from typing import List
+from flask import Flask, request, render_template, abort
 
-import jwt
-from django.http import HttpResponse, HttpResponseBadRequest, JsonResponse
-from django.shortcuts import redirect, render
-from django.views.decorators.csrf import csrf_exempt
+app = Flask(__name__)
 
-from .models import CSRF_user_tbl
-from .views import authentication_decorator
-
-# import os
-
-## Mitre top1 | CWE:787
-
-# target zone
-FLAG = "NOT_SUPPOSED_TO_BE_ACCESSED"
-
-# target zone end
+ALLOWED_COMMANDS = {
+    "ls": ["/bin/ls", "/usr/bin/ls"],
+    "whoami": ["/usr/bin/whoami"],
+    "date": ["/bin/date", "/usr/bin/date"],
+}
 
 
-@authentication_decorator
-def mitre_top1(request):
-    if request.method == 'GET':
-        return render(request, 'mitre/mitre_top1.html')
+def _resolve_command(user_cmd: str) -> List[str]:
+    """
+    Map a simple, whitelisted command name to an actual executable path.
 
-@authentication_decorator
-def mitre_top2(request):
-    if request.method == 'GET':
-        return render(request, 'mitre/mitre_top2.html')
+    Prevents arbitrary command execution.
+    """
+    cmd = (user_cmd or "").strip().lower()
+    if cmd not in ALLOWED_COMMANDS:
+        raise ValueError("Command not allowed.")
 
-@authentication_decorator
-def mitre_top3(request):
-    if request.method == 'GET':
-        return render(request, 'mitre/mitre_top3.html')
-        
-@authentication_decorator
-def mitre_top4(request):
-    if request.method == 'GET':
-        return render(request, 'mitre/mitre_top4.html')
-        
-@authentication_decorator
-def mitre_top5(request):
-    if request.method == 'GET':
-        return render(request, 'mitre/mitre_top5.html')
-        
-@authentication_decorator
-def mitre_top6(request):
-    if request.method == 'GET':
-        return render(request, 'mitre/mitre_top6.html')
-        
-@authentication_decorator
-def mitre_top7(request):
-    if request.method == 'GET':
-        return render(request, 'mitre/mitre_top7.html')
-        
-@authentication_decorator
-def mitre_top8(request):
-    if request.method == 'GET':
-        return render(request, 'mitre/mitre_top8.html')
-        
-@authentication_decorator
-def mitre_top9(request):
-    if request.method == 'GET':
-        return render(request, 'mitre/mitre_top9.html')
-        
-@authentication_decorator
-def mitre_top10(request):
-    if request.method == 'GET':
-        return render(request, 'mitre/mitre_top10.html')
-        
-@authentication_decorator
-def mitre_top11(request):
-    if request.method == 'GET':
-        return render(request, 'mitre/mitre_top11.html')
-        
-@authentication_decorator
-def mitre_top12(request):
-    if request.method == 'GET':
-        return render(request, 'mitre/mitre_top12.html')
-        
-@authentication_decorator
-def mitre_top13(request):
-    if request.method == 'GET':
-        return render(request, 'mitre/mitre_top13.html')
-        
-@authentication_decorator
-def mitre_top14(request):
-    if request.method == 'GET':
-        return render(request, 'mitre/mitre_top14.html')
+    for path in ALLOWED_COMMANDS[cmd]:
+        if os.path.exists(path) and os.access(path, os.X_OK):
+            return [path]
 
-@authentication_decorator
-def mitre_top15(request):
-    if request.method == 'GET':
-        return render(request, 'mitre/mitre_top15.html')
-
-@authentication_decorator
-def mitre_top16(request):
-    if request.method == 'GET':
-        return render(request, 'mitre/mitre_top16.html')
-
-@authentication_decorator
-def mitre_top17(request):
-    if request.method == 'GET':
-        return render(request, 'mitre/mitre_top17.html')
-
-@authentication_decorator
-def mitre_top18(request):
-    if request.method == 'GET':
-        return render(request, 'mitre/mitre_top18.html')
-
-@authentication_decorator
-def mitre_top19(request):
-    if request.method == 'GET':
-        return render(request, 'mitre/mitre_top19.html')
+    raise ValueError("Configured command is not executable on this system.")
 
 
-@authentication_decorator
-def mitre_top20(request):
-    if request.method == 'GET':
-        return render(request, 'mitre/mitre_top20.html')
+def _safe_eval_expression(expr: str) -> str:
+    """
+    Extremely restricted evaluator for demo only.
+
+    Only allows arithmetic expressions using digits and + - * / ( ).
+    """
+    expr = (expr or "").strip()
+    if not expr:
+        raise ValueError("Empty expression")
+
+    allowed_chars = set("0123456789+-*/() ")
+    if any(ch not in allowed_chars for ch in expr):
+        raise ValueError("Unsupported characters in expression")
+
+    try:
+        result = eval(expr, {"__builtins__": {}}, {})
+    except Exception as exc:
+        raise ValueError("Invalid expression") from exc
+
+    return str(result)
 
 
-@authentication_decorator
-def mitre_top21(request):
-    if request.method == 'GET':
-        return render(request, 'mitre/mitre_top21.html')
+@app.route("/run-command", methods=["POST"])
+def run_command():
+    """
+    FIX for: 'Change this code to not construct the OS command from user-controlled data.'
+
+    Original pattern (insecure):
+        cmd = request.form['cmd']
+        os.system("sh -c '%s'" % cmd)
+
+    Fixed:
+      - Whitelist command names only.
+      - Use subprocess.run with a list and shell=False.
+    """
+    user_cmd = request.form.get("cmd")
+    try:
+        cmd_list = _resolve_command(user_cmd)
+    except ValueError as exc:
+        return render_template("command.html", error=str(exc)), 400
+
+    try:
+        completed = subprocess.run(
+            cmd_list,
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+    except subprocess.SubprocessError:
+        return render_template("command.html", error="Command execution failed."), 500
+
+    stdout = completed.stdout or ""
+    stderr = completed.stderr or ""
+    return render_template("command.html", command=user_cmd, stdout=stdout, stderr=stderr)
 
 
-@authentication_decorator
-def mitre_top22(request):
-    if request.method == 'GET':
-        return render(request, 'mitre/mitre_top22.html')
+@app.route("/calc", methods=["POST"])
+def calc():
+    """
+    FIX for: 'Change this code to not dynamically execute code influenced by user-controlled data.'
+
+    Original pattern (insecure):
+        expr = request.form['expr']
+        result = eval(expr)
+
+    Fixed:
+      - Implement a restricted, whitelisted evaluator.
+      - Reject any unexpected characters or constructs.
+    """
+    expr = request.form.get("expr", "")
+    try:
+        result = _safe_eval_expression(expr)
+    except ValueError as exc:
+        return render_template("calc.html", error=str(exc)), 400
+
+    return render_template("calc.html", expr=expr, result=result)
 
 
-@authentication_decorator
-def mitre_top23(request):
-    if request.method == 'GET':
-        return render(request, 'mitre/mitre_top23.html')
-
-
-@authentication_decorator
-def mitre_top24(request):
-    if request.method == 'GET':
-        return render(request, 'mitre/mitre_top24.html')
-
-@authentication_decorator
-def mitre_top25(request):
-    if request.method == 'GET':
-        return render(request, 'mitre/mitre_top25.html')
-
-@authentication_decorator
-def csrf_lab_login(request):
-    if request.method == 'GET':
-        return render(request, 'mitre/csrf_lab_login.html')
-    elif request.method == 'POST':
-        password = request.POST.get('password')
-        username = request.POST.get('username')
-        password = md5(password.encode()).hexdigest()
-        User = CSRF_user_tbl.objects.filter(username=username, password=password)
-        if User:
-            payload ={
-                'username': username,
-                'exp': datetime.datetime.utcnow() + datetime.timedelta(seconds=300),
-                'iat': datetime.datetime.utcnow()
-            }
-            cookie = jwt.encode(payload, 'csrf_vulneribility', algorithm='HS256')
-            response = redirect("/mitre/9/lab/transaction")
-            response.set_cookie('auth_cookiee', cookie)
-            return response
-        else :
-            return redirect('/mitre/9/lab/login')
-
-@authentication_decorator
-@csrf_exempt
-def csrf_transfer_monei(request):
-    if request.method == 'GET':
-        try:
-            cookie = request.COOKIES['auth_cookiee']
-            payload = jwt.decode(cookie, 'csrf_vulneribility', algorithms=['HS256'])
-            username = payload['username']
-            User = CSRF_user_tbl.objects.filter(username=username)
-            if not User:
-                redirect('/mitre/9/lab/login')
-            return render(request, 'mitre/csrf_dashboard.html', {'balance': User[0].balance})
-        except:
-            return redirect('/mitre/9/lab/login')
-
-def csrf_transfer_monei_api(request,recipent,amount):
-    if request.method == "GET":
-        cookie = request.COOKIES['auth_cookiee']
-        payload = jwt.decode(cookie, 'csrf_vulneribility', algorithms=['HS256'])
-        username = payload['username']
-        User = CSRF_user_tbl.objects.filter(username=username)
-        if not User:
-            return redirect('/mitre/9/lab/login')
-        if int(amount) > 0:
-            if int(amount) <= User[0].balance:
-                recipent = CSRF_user_tbl.objects.filter(username=recipent)
-                if recipent:
-                    recipent = recipent[0]
-                    recipent.balance = recipent.balance + int(amount)
-                    recipent.save()
-                    User[0].balance = User[0].balance - int(amount)
-                    User[0].save()
-        return redirect('/mitre/9/lab/transaction') 
-    else:
-        return redirect ('/mitre/9/lab/transaction')
-
-
-# @authentication_decorator
-@csrf_exempt
-def mitre_lab_25_api(request):
-    if request.method == "POST":
-        expression = request.POST.get('expression')
-        result = eval(expression)
-        return JsonResponse({'result': result})
-    else:
-        return redirect('/mitre/25/lab/')
-
-
-@authentication_decorator
-def mitre_lab_25(request):
-    return render(request, 'mitre/mitre_lab_25.html')
-
-@authentication_decorator
-def mitre_lab_17(request):
-    return render(request, 'mitre/mitre_lab_17.html')
-
-def command_out(command):
-    process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    return process.communicate()
-    
-
-@csrf_exempt
-def mitre_lab_17_api(request):
-    if request.method == "POST":
-        ip = request.POST.get('ip')
-        command = "nmap " + ip 
-        res, err = command_out(command)
-        res = res.decode()
-        err = err.decode()
-        pattern = "STATE SERVICE.*\\n\\n"
-        ports = re.findall(pattern, res,re.DOTALL)[0][14:-2].split('\n')
-        return JsonResponse({'raw_res': str(res), 'raw_err': str(err), 'ports': ports})
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5002, debug=False)
