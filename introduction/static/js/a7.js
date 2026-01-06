@@ -1,65 +1,36 @@
-/**
- * introduction/static/js/a7.js
- */
+event4 = function () {
+    var code = document.getElementById('a7_input').value;
+    var myHeaders = new Headers();
 
-async function fetchJwtForCurrentUser() {
-  const response = await fetch("/api/auth/token", {
-    method: "GET",
-    credentials: "include",
-    headers: {
-      Accept: "application/json",
-    },
-  });
+    // SECURITY: Do not hardcode JWTs, CSRF tokens, or cookies in client-side code.
+    // Any required authentication or CSRF tokens must be issued and managed server-side
+    // (e.g., via HttpOnly cookies or server-rendered hidden fields), not embedded here.
+    //
+    // Example (non-sensitive) usage if needed for the lab:
+    // const jwt = window.APP_JWT || null;
+    // if (jwt) {
+    //     myHeaders.append('Authorization', 'Bearer ' + jwt);
+    // }
 
-  if (!response.ok) {
-    throw new Error("Failed to obtain JWT from server");
-  }
+    var formdata = new FormData();
+    // CSRF tokens, if required, should be injected by the backend as hidden inputs
+    // or via meta tags and then read here, rather than hardcoded.
+    formdata.append('code', code);
 
-  const data = await response.json();
+    var requestOptions = {
+        method: 'POST',
+        headers: myHeaders,
+        body: formdata,
+        redirect: 'follow'
+    };
 
-  if (!data || typeof data.token !== "string") {
-    throw new Error("Invalid token response from server");
-  }
-
-  return data.token;
-}
-
-async function callProtectedApi() {
-  try {
-    const token = await fetchJwtForCurrentUser();
-
-    const response = await fetch("/api/protected/resource", {
-      method: "GET",
-      headers: {
-        Accept: "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error("Failed to call protected API");
-    }
-
-    const result = await response.json();
-    const outputEl = document.getElementById("a7-output");
-    if (outputEl) {
-      outputEl.textContent = JSON.stringify(result, null, 2);
-    }
-  } catch (err) {
-    const outputEl = document.getElementById("a7-output");
-    if (outputEl) {
-      outputEl.textContent = "An error occurred while loading data.";
-    }
-  }
-}
-
-document.addEventListener("DOMContentLoaded", () => {
-  const btn = document.getElementById("a7-load-btn");
-  if (btn) {
-    btn.addEventListener("click", () => {
-      void callProtectedApi();
-    });
-  }
-});
-
-export { fetchJwtForCurrentUser, callProtectedApi };
+    fetch('/2021/discussion/A7/api', requestOptions)
+        .then(response => response.text())
+        .then(result => {
+            let data = JSON.parse(result); // parse JSON string into object
+            console.log(data);
+            document.getElementById('a7_d4').style.display = 'flex';
+            document.getElementById('a7_d4').innerText = 'Result: ' + data.message;
+        })
+        .catch(error => console.log('error', error));
+};

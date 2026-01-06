@@ -1,32 +1,20 @@
 import os
 from pathlib import Path
-import secrets
+from django.contrib.messages import constants as messages
 
+# Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+# SECURITY WARNING: keep the secret key used in production secret!
+# Do not hardcode SECRET_KEY in source. Load from environment or a secure secret manager.
+SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "change-me-insecure-demo-key")
 
-def _get_secret_key() -> str:
-    """
-    Retrieve Django SECRET_KEY from environment.
+# SECURITY WARNING: don't run with debug turned on in production!
+DEBUG = True
 
-    Priority:
-      1. SENSITIVE_DATA_LAB_SECRET_KEY (lab-specific)
-      2. DJANGO_SECRET_KEY
-      3. Generated ephemeral key for non-production/demo use only.
-    """
-    key = os.getenv("SENSITIVE_DATA_LAB_SECRET_KEY") or os.getenv("DJANGO_SECRET_KEY")
-    if key:
-        return key
+ALLOWED_HOSTS = ["*"]
 
-    return secrets.token_urlsafe(50)
-
-
-SECRET_KEY = _get_secret_key()
-
-DEBUG = os.getenv("DJANGO_DEBUG", "false").lower() == "true"
-
-ALLOWED_HOSTS = os.getenv("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
-
+# Application definition
 INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",
@@ -34,6 +22,8 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "crispy_forms",
+    "dataexposure",
 ]
 
 MIDDLEWARE = [
@@ -51,7 +41,7 @@ ROOT_URLCONF = "sensitive_data_lab.urls"
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
-        "DIRS": [BASE_DIR / "templates"],
+        "DIRS": [os.path.join(BASE_DIR, "templates")],
         "APP_DIRS": True,
         "OPTIONS": {
             "context_processors": [
@@ -61,11 +51,12 @@ TEMPLATES = [
                 "django.contrib.messages.context_processors.messages",
             ],
         },
-    }
+    },
 ]
 
 WSGI_APPLICATION = "sensitive_data_lab.wsgi.application"
 
+# Database
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.sqlite3",
@@ -73,6 +64,7 @@ DATABASES = {
     }
 }
 
+# Password validation
 AUTH_PASSWORD_VALIDATORS = [
     {
         "NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator",
@@ -88,19 +80,28 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
+# Internationalization
 LANGUAGE_CODE = "en-us"
 TIME_ZONE = "UTC"
 USE_I18N = True
+USE_L10N = True
 USE_TZ = True
 
+# Static files (CSS, JavaScript, Images)
 STATIC_URL = "/static/"
+STATICFILES_DIRS = [os.path.join(BASE_DIR, "static")]
 
-SECURE_BROWSER_XSS_FILTER = True
-SECURE_CONTENT_TYPE_NOSNIFF = True
-SESSION_COOKIE_SECURE = os.getenv("DJANGO_SESSION_COOKIE_SECURE", "false").lower() == "true"
-CSRF_COOKIE_SECURE = os.getenv("DJANGO_CSRF_COOKIE_SECURE", "false").lower() == "true"
-SESSION_COOKIE_HTTPONLY = True
-CSRF_COOKIE_HTTPONLY = False
-SECURE_HSTS_SECONDS = int(os.getenv("DJANGO_SECURE_HSTS_SECONDS", "0"))
-SECURE_HSTS_INCLUDE_SUBDOMAINS = False
-SECURE_HSTS_PRELOAD = False
+# Default primary key field type
+DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# Crispy Forms
+CRISPY_TEMPLATE_PACK = "bootstrap4"
+
+# Message tags for Bootstrap
+MESSAGE_TAGS = {
+    messages.DEBUG: "secondary",
+    messages.INFO: "info",
+    messages.SUCCESS: "success",
+    messages.WARNING: "warning",
+    messages.ERROR: "danger",
+}

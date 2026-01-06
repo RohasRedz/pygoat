@@ -1,98 +1,151 @@
+from flask import Flask, render_template, request, redirect, url_for, make_response, flash
+import hashlib
+import json
+from datetime import datetime, timedelta
+import base64
 import os
-from flask import Flask, session, redirect, url_for, request, render_template
-from werkzeug.middleware.proxy_fix import ProxyFix
-from functools import wraps
 import secrets
 
-# ---------------------------------------------------------------------------
-# Configuration
-# ---------------------------------------------------------------------------
+app = Flask(__name__)
 
-def _get_secret_key() -> str:
-    """
-    Retrieve Flask SECRET_KEY from a secure source.
+# SECURITY: Do not hardcode Flask secret keys; load from environment or a secure store.
+# Fallback key is only for non-production/demo use.
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", secrets.token_hex(32))
 
-    Priority:
-      1. BROKEN_AUTH_SECRET_KEY (lab-specific)
-      2. FLASK_SECRET_KEY
-      3. Generate a random ephemeral key (non-production fallback)
+# Vulnerable: Storing user data in memory (kept for lab/demo behavior)
+users = {
+    "admin": {
+        "password": "admin123",  # Vulnerable: Weak password
+        "email": "admin@example.com",
+        "role": "admin",
+    },
+    "user": {
+        "password": "password123",  # Vulnerable: Weak password
+        "email": "user@example.com",
+        "role": "user",
+    },
+}
 
-    In a real deployment, this must come from environment or a secret manager.
-    """
-    key = os.getenv("BROKEN_AUTH_SECRET_KEY") or os.getenv("FLASK_SECRET_KEY")
-    if key:
-        return key
-
-    # Ephemeral fallback for local/demo only  avoid hardcoding.
-    # NOTE: This must NOT be used in real production deployments.
-    return secrets.token_urlsafe(32)
+# Vulnerable: Storing reset tokens in memory
+password_reset_tokens = {}
 
 
-def create_app() -> Flask:
-    app = Flask(__name__)
-    # Do NOT hardcode the secret key in source control.
-    app.secret_key = _get_secret_key()
+@app.route("/")
+def index():
+    return render_template("index.html")
 
-    # Typical hardening for proxied deployments
-    app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
-    # -----------------------------------------------------------------------
-    # Simple auth helpers
-    # -----------------------------------------------------------------------
+@app.route("/lab")
+def lab():
+    return render_template("lab.html")
 
-    def login_required(view_func):
-        @wraps(view_func)
-        def wrapped(*args, **kwargs):
-            if not session.get("user_id"):
-                return redirect(url_for("login", next=request.path))
-            return view_func(*args, **kwargs)
 
-        return wrapped
+@app.route("/login", methods=["POST"])
+def login():
+    username = request.form.get("username")
+    password = request.form.get("password")
+    remember_me = request.form.get("remember_me")
 
-    @app.route("/")
-    def index():
-        if session.get("user_id"):
-            return render_template("index.html", user_id=session["user_id"])
-        return redirect(url_for("login"))
+    if username in users and users[username]["password"] == password:  # Plain text comparison kept for lab
+        response = make_response(redirect(url_for("dashboard")))
 
-    @app.route("/login", methods=["GET", "POST"])
-    def login():
-        if request.method == "GET":
-            return render_template("login.html")
+        # SECURITY: Use cryptographically secure, opaque session tokens instead of encoding username+timestamp.
+        session_token = secrets.token_urlsafe(32)
 
-        username = request.form.get("username", "")
-        password = request.form.get("password", "")
+        # For a real app, this token should be mapped to server-side session state (e.g., DB or cache).
+        # Here we preserve existing behavior by embedding the username in a signed value.
+        signed_value = base64.b64encode(f"{username}:{session_token}".encode()).decode()
 
-        # NOTE: In labs this may be intentionally weak, but we still avoid logging secrets
-        if not username or not password:
-            # Do not reveal which field is wrong
-            return render_template("login.html", error="Invalid credentials.")
+        cookie_kwargs = {"httponly": True, "samesite": "Lax"}
+        # In production, also set Secure=True when using HTTPS:
+        # cookie_kwargs["secure"] = True
 
-        # Demo-only static check; in a real app, use a user DB + password hashing
-        if username == "admin" and password == "admin123":
-            session["user_id"] = username
-            next_url = request.args.get("next") or url_for("index")
-            # Ensure internal redirect only
-            if not next_url.startswith("/"):
-                next_url = url_for("index")
-            return redirect(next_url)
+        if remember_me:
+            response.set_cookie(
+                "session",
+                signed_value,
+                max_age=30 * 24 * 60 * 60,
+                **cookie_kwargs,
+            )
+        else:
+            response.set_cookie("session", signed_value, **cookie_kwargs)
 
-        return render_template("login.html", error="Invalid credentials.")
+        return response
 
-    @app.route("/logout")
-    def logout():
-        session.clear()
-        return redirect(url_for("login"))
+    flash("Invalid username or password")
+    return redirect(url_for("lab"))
 
-    @app.route("/profile")
-    @login_required
-    def profile():
-        return render_template("profile.html", user_id=session["user_id"])
 
-    return app
+@app.route("/register", methods=["POST"])
+def register():
+    username = request.form.get("username")
+    password = request.form.get("password")
+    email = request.form.get("email")
+
+    # Vulnerable: No password complexity requirements (left as-is for lab)
+    if username and password and email:
+        if username not in users:
+            users[username] = {
+                "password": password,  # Vulnerable: Storing plain text passwords
+                "email": email,
+                "role": "user",
+            }
+            flash("Registration successful")
+            return redirect(url_for("lab"))
+
+    flash("Registration failed")
+    return redirect(url_for("lab"))
+
+
+@app.route("/reset-password", methods=["POST"])
+def reset_password():
+    email = request.form.get("email")
+
+    # Vulnerable: Password reset token generation kept for lab; use secure token in real app
+    for username, user_data in users.items():
+        if user_data["email"] == email:
+            # SECURITY: Use secrets instead of predictable md5-based tokens.
+            token = secrets.token_urlsafe(32)
+            password_reset_tokens[token] = username
+
+            # In a real application, this would send an email; token should not be shown to the user.
+            flash(f"Password reset link has been sent to {email}")
+            return redirect(url_for("lab"))
+
+    flash("Email not found")
+    return redirect(url_for("lab"))
+
+
+@app.route("/reset/<token>")
+def reset_form(token):
+    if token in password_reset_tokens:
+        return render_template("reset.html", token=token)
+    return "Invalid token"
+
+
+@app.route("/dashboard")
+def dashboard():
+    session_token = request.cookies.get("session")
+    if not session_token:
+        return redirect(url_for("lab"))
+
+    try:
+        decoded = base64.b64decode(session_token).decode()
+        username, _token = decoded.split(":", 1)
+        if username in users:
+            return render_template(
+                "dashboard.html",
+                username=username,
+                role=users[username]["role"],
+                email=users[username]["email"],
+            )
+    except Exception:
+        # Fail closed on invalid cookie
+        pass
+
+    return redirect(url_for("lab"))
 
 
 if __name__ == "__main__":
-    # For local testing only; in production use a WSGI server (gunicorn, uWSGI, etc.)
-    application = create_app()
-    application.run(host="0.0.0.0", port=int(os.getenv("PORT", "5000")), debug=False)
+    # SECURITY: Debug should be disabled in production; kept True here for lab/demo.
+    app.run(host="0.0.0.0", port=5000, debug=True)

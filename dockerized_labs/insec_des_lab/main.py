@@ -1,81 +1,69 @@
+from flask import Flask, render_template, request, make_response
+import base64
 import json
-from flask import Flask, request, render_template, abort
-from typing import Any, Dict
+from dataclasses import dataclass
 
 app = Flask(__name__)
 
 
-def _validate_payload(payload: Any) -> Dict[str, Any]:
-    """
-    Strictly validate the deserialized payload.
-
-    Requirements (example  tune for your use case):
-      - Must be a dict
-      - Only specific keys allowed
-      - Value types constrained
-    """
-    if not isinstance(payload, dict):
-        raise ValueError("Payload must be an object")
-
-    allowed_keys = {"username", "role", "preferences"}
-    if not set(payload.keys()).issubset(allowed_keys):
-        raise ValueError("Unexpected keys in payload")
-
-    username = payload.get("username")
-    if username is not None and not isinstance(username, str):
-        raise ValueError("Invalid username")
-
-    role = payload.get("role", "user")
-    if role not in {"user", "admin"}:
-        raise ValueError("Invalid role")
-
-    prefs = payload.get("preferences") or {}
-    if not isinstance(prefs, dict):
-        raise ValueError("Invalid preferences")
-
-    return {"username": username, "role": role, "preferences": prefs}
+@dataclass
+class User:
+    username: str
+    is_admin: bool = False
 
 
-@app.route("/", methods=["GET", "POST"])
+@app.route("/")
 def index():
-    """
-    Demonstrates secure handling of user-supplied structured data.
+    return render_template("index.html")
 
-    Original issue: using pickle.loads or similar on user input at L36.
-    Fix: use JSON with strict validation instead of unsafe deserialization.
-    """
-    if request.method == "GET":
-        return render_template("index.html")
 
-    raw = request.form.get("data") or request.data.decode("utf-8", errors="ignore")
-    if not raw:
-        return render_template("index.html", error="No data provided.")
+@app.route("/serialize", methods=["POST"])
+def serialize_data():
+    username = request.form.get("username", "guest")
+    user = User(username=username, is_admin=False)
 
+    # SECURITY: Use JSON instead of pickle for serialization of user-controlled data.
+    payload = {"username": user.username, "is_admin": user.is_admin}
+    serialized = base64.b64encode(json.dumps(payload).encode("utf-8")).decode("utf-8")
+
+    return render_template("result.html", serialized=serialized)
+
+
+@app.route("/deserialize", methods=["POST"])
+def deserialize_data():
     try:
-        parsed = json.loads(raw)
-    except json.JSONDecodeError:
-        return render_template("index.html", error="Invalid JSON data.")
+        serialized_data = request.form.get("serialized_data", "")
+        decoded_data = base64.b64decode(serialized_data)
 
-    try:
-        payload = _validate_payload(parsed)
-    except ValueError as exc:
-        return render_template("index.html", error="Invalid payload."), 400
+        # SECURITY: Safe deserialization using JSON with explicit validation
+        data = json.loads(decoded_data.decode("utf-8"))
 
-    username = payload.get("username") or "guest"
-    role = payload.get("role", "user")
+        if not isinstance(data, dict):
+            message = "Invalid user data"
+        else:
+            username = data.get("username")
+            is_admin = bool(data.get("is_admin", False))
 
-    return render_template("profile.html", username=username, role=role, preferences=payload["preferences"])
+            # Enforce server-side privilege control regardless of client-supplied flag
+            user = User(username=username or "guest", is_admin=False)
 
+            if user.is_admin:
+                # This branch will not be reachable with client-controlled data
+                message = (
+                    f"Welcome Admin {user.username}! "
+                    "Here's the secret admin content: ADMIN_KEY_123"
+                )
+            else:
+                message = (
+                    f"Welcome {user.username}. "
+                    "Only admins can see the secret content."
+                )
 
-@app.errorhandler(400)
-def bad_request(_e):
-    return "Bad request.", 400
-
-
-@app.errorhandler(500)
-def server_error(_e):
-    return "Internal server error.", 500
+        return render_template("result.html", message=message)
+    except Exception as e:
+        # Avoid leaking detailed errors to the user in real apps; kept simple for lab.
+        return render_template("result.html", message="Error processing data.")
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5001, debug=False)
+    app.run(host="0.0.0.0", port=8080)
