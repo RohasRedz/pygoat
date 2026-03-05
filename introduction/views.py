@@ -915,11 +915,15 @@ def ssrf_lab(request):
         else:
             file=request.POST["blog"]
             try :
+                whitelist = {'blog': 'blog.txt', 'news': 'news.txt'}
+                if file not in whitelist:
+                    return render(request, "Lab/ssrf/ssrf_lab.html", {"blog": "No blog found"})
+                safe_filename = whitelist[file]
                 dirname = os.path.dirname(__file__)
-                filename = os.path.join(dirname, file)
-                file = open(filename,"r")
-                data = file.read()
-                return render(request,"Lab/ssrf/ssrf_lab.html",{"blog":data})
+                safe_path = os.path.join(dirname, safe_filename)
+                with open(safe_path, "r") as f:
+                    data = f.read()
+                return render(request, "Lab/ssrf/ssrf_lab.html", {"blog": data})
             except:
                 return render(request, "Lab/ssrf/ssrf_lab.html", {"blog": "No blog found"})
     else:
