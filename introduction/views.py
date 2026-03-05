@@ -951,7 +951,13 @@ def ssrf_lab2(request):
         return render(request, "Lab/ssrf/ssrf_lab2.html")
 
     elif request.method == "POST":
-        url = request.POST["url"]
+                from urllib.parse import urlparse
+        allowed_hosts = ['example.com']  # TODO: Replace 'example.com' with your allowed domain(s)
+        url_input = request.POST.get('url', '')
+        parsed_url = urlparse(url_input)
+        if parsed_url.hostname not in allowed_hosts:
+            return render(request, 'Lab/ssrf/ssrf_lab2.html', {'error': 'Invalid URL'})
+        url = url_input
         try:
             response = requests.get(url)
             return render(request, "Lab/ssrf/ssrf_lab2.html", {"response": response.content.decode()})
