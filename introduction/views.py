@@ -951,9 +951,11 @@ def ssrf_lab2(request):
         return render(request, "Lab/ssrf/ssrf_lab2.html")
 
     elif request.method == "POST":
-        url = request.POST["url"]
+        validated_parameter = request.POST.get("url_param")
+        # TODO: Validate 'validated_parameter' against a whitelist of allowed values
+        safe_url = 'https://trusted.example.com/api?query=' + validated_parameter
         try:
-            response = requests.get(url)
+            response = requests.get(safe_url)
             return render(request, "Lab/ssrf/ssrf_lab2.html", {"response": response.content.decode()})
         except:
             return render(request, "Lab/ssrf/ssrf_lab2.html", {"error": "Invalid URL"})
