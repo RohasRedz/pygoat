@@ -20,6 +20,9 @@ from xml.sax.handler import feature_external_ges
 
 import jwt
 import requests
+
+BASE_URL = 'https://example.com'  # TODO: Set a secure fixed base URL from configuration
+
 import yaml
 from argon2 import PasswordHasher
 from django.contrib import messages
@@ -951,7 +954,7 @@ def ssrf_lab2(request):
         return render(request, "Lab/ssrf/ssrf_lab2.html")
 
     elif request.method == "POST":
-        url = request.POST["url"]
+        url = BASE_URL  # Secure: using fixed base URL, not user-controlled
         try:
             response = requests.get(url)
             return render(request, "Lab/ssrf/ssrf_lab2.html", {"response": response.content.decode()})
