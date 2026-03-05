@@ -39,6 +39,12 @@ from .models import (FAANG, AF_admin, AF_session_id, Blogs, CF_user, authLogin,
                      comments, info, login, otp, sql_lab_table, tickits)
 from .utility import customHash, filter_blog
 
+ALLOWED_FILES = {
+    'blog': 'blog.txt',
+    # add other allowed identifiers as needed
+}
+
+
 #*****************************************Lab Requirements****************************************************#
 
 #*****************************************Login and Registration****************************************************#
@@ -915,13 +921,18 @@ def ssrf_lab(request):
         else:
             file=request.POST["blog"]
             try :
+                user_input_identifier = file
+                safe_filename = ALLOWED_FILES.get(user_input_identifier)
+                if safe_filename is None:
+                    return render(request, "Lab/ssrf/ssrf_lab.html", {"blog": "Invalid file selection"})
                 dirname = os.path.dirname(__file__)
-                filename = os.path.join(dirname, file)
-                file = open(filename,"r")
-                data = file.read()
-                return render(request,"Lab/ssrf/ssrf_lab.html",{"blog":data})
-            except:
-                return render(request, "Lab/ssrf/ssrf_lab.html", {"blog": "No blog found"})
+                filename = os.path.join(dirname, safe_filename)
+                try:
+                    with open(filename, "r") as f:
+                        data = f.read()
+                    return render(request, "Lab/ssrf/ssrf_lab.html", {"blog": data})
+                except Exception as e:
+                    return render(request, "Lab/ssrf/ssrf_lab.html", {"blog": "No blog found"})
     else:
         return redirect('login')
 
