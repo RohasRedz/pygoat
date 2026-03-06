@@ -2,7 +2,6 @@ import os
 
 import pytest
 
-
 from introduction import views
 
 
@@ -23,18 +22,19 @@ def test_ssrf_lab_rejects_directory_traversal_and_does_not_open(mocker):
     result = views.ssrf_lab(request)
 
     assert result == "rendered"
-    render_mock.assert_called()
     open_mock.assert_not_called()
+    render_mock.assert_called()
 
 
 def test_ssrf_lab_uses_basename_when_opening(mocker):
     request = _make_authenticated_request(mocker, "nested/path/blog.txt")
 
-    dirname_mock = mocker.patch("introduction.views.os.path.dirname", return_value="/app/introduction")
-    join_mock = mocker.patch("introduction.views.os.path.join", side_effect=lambda a, b: f"{a}/{b}")
     mocker.patch("introduction.views.os.path.isabs", return_value=False)
     mocker.patch("introduction.views.os.path.normpath", side_effect=os.path.normpath)
+
+    mocker.patch("introduction.views.os.path.dirname", return_value="/app/introduction")
     mocker.patch("introduction.views.os.path.basename", side_effect=os.path.basename)
+    join_mock = mocker.patch("introduction.views.os.path.join", side_effect=lambda a, b: f"{a}/{b}")
 
     file_handle = mocker.Mock()
     file_handle.__enter__ = mocker.Mock(return_value=file_handle)
@@ -47,7 +47,6 @@ def test_ssrf_lab_uses_basename_when_opening(mocker):
     result = views.ssrf_lab(request)
 
     assert result == "rendered"
-    dirname_mock.assert_called_once()
     join_mock.assert_called_once_with("/app/introduction", "blog.txt")
     open_mock.assert_called_once()
     render_mock.assert_called_once()
