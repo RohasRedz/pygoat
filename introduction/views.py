@@ -916,10 +916,18 @@ def ssrf_lab(request):
             file=request.POST["blog"]
             try :
                 dirname = os.path.dirname(__file__)
-                filename = os.path.join(dirname, file)
-                file = open(filename,"r")
-                data = file.read()
-                return render(request,"Lab/ssrf/ssrf_lab.html",{"blog":data})
+                ALLOWED_FILES = {
+                    'blog': 'blog.txt',
+                    # TODO: Add any other allowed file mappings here
+                }
+                if file in ALLOWED_FILES:
+                    safe_filename = ALLOWED_FILES[file]
+                    filename = os.path.join(dirname, safe_filename)
+                    with open(filename, "r") as f:
+                        data = f.read()
+                    return render(request, "Lab/ssrf/ssrf_lab.html", {"blog": data})
+                else:
+                    return render(request, "Lab/ssrf/ssrf_lab.html", {"blog": "Invalid file request."})
             except:
                 return render(request, "Lab/ssrf/ssrf_lab.html", {"blog": "No blog found"})
     else:
