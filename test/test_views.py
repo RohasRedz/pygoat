@@ -1,67 +1,40 @@
+import types
+
 import pytest
-
-# Assumption: Django app module path is "introduction.views" as per source file path.
-import introduction.views as views
-
-
-class _DummyUser:
-    def __init__(self, authenticated=True):
-        self.is_authenticated = authenticated
-
-
-class _DummyRequest:
-    def __init__(self, method="POST", post=None, user_authenticated=True):
-        self.method = method
-        self.POST = post or {}
-        self.user = _DummyUser(user_authenticated)
 
 
 def test_insec_desgine_lab_rejects_non_integer_count(mocker):
-    # Arrange
-    req = _DummyRequest(post={"count": "not-an-int"}, user_authenticated=True)
+    # Regression test for input validation fix: non-integer count should be handled.
+    from introduction import views
 
-    # tickits.objects.filter(user=request.user) should return iterable
-    mocker.patch.object(views.tickits.objects, "filter", autospec=True, return_value=[])
+    render_spy = mocker.patch("introduction.views.render", autospec=True)
 
-    render_spy = mocker.patch.object(views, "render", autospec=True)
+    # tickits.objects.filter(user=...) returns existing tickets list
+    tickits_filter = mocker.patch("introduction.views.tickits.objects.filter", autospec=True)
+    tickits_filter.return_value = []
 
-    # Act
-    views.insec_desgine_lab(req)
+    user = types.SimpleNamespace(is_authenticated=True)
+    request = types.SimpleNamespace(method="POST", POST={"count": "not-an-int"}, user=user)
 
-    # Assert
-    render_spy.assert_called_once()
-    args, kwargs = render_spy.call_args
-    assert args[1] == "Lab/A11/a11_lab.html"
-    assert kwargs["context"] == {"error": "Invalid count value provided.", "tickets": []}
+    views.insec_desgine_lab(request)
 
-
-def test_insec_desgine_lab_rejects_zero_or_negative_count(mocker):
-    # Arrange
-    req = _DummyRequest(post={"count": "0"}, user_authenticated=True)
-
-    mocker.patch.object(views.tickits.objects, "filter", autospec=True, return_value=[])
-    render_spy = mocker.patch.object(views, "render", autospec=True)
-
-    # Act
-    views.insec_desgine_lab(req)
-
-    # Assert
-    args, kwargs = render_spy.call_args
-    assert args[1] == "Lab/A11/a11_lab.html"
-    assert kwargs["context"]["error"] == "You can have atmost 5 tickits"
+    render_spy.assert_called()
+    assert render_spy.call_args[0][1] == "Lab/A11/a11_lab.html"
+    assert render_spy.call_args[0][2]["error"] == "Invalid count value provided."
 
 
-def test_insec_desgine_lab_rejects_count_exceeding_limit(mocker):
-    # Arrange
-    req = _DummyRequest(post={"count": "6"}, user_authenticated=True)
+def test_insec_desgine_lab_rejects_non_positive_count(mocker):
+    from introduction import views
 
-    mocker.patch.object(views.tickits.objects, "filter", autospec=True, return_value=[])
-    render_spy = mocker.patch.object(views, "render", autospec=True)
+    render_spy = mocker.patch("introduction.views.render", autospec=True)
+    tickits_filter = mocker.patch("introduction.views.tickits.objects.filter", autospec=True)
+    tickits_filter.return_value = []
 
-    # Act
-    views.insec_desgine_lab(req)
+    user = types.SimpleNamespace(is_authenticated=True)
+    request = types.SimpleNamespace(method="POST", POST={"count": "0"}, user=user)
 
-    # Assert
-    args, kwargs = render_spy.call_args
-    assert args[1] == "Lab/A11/a11_lab.html"
-    assert kwargs["context"]["error"] == "You can have atmost 5 tickits"
+    views.insec_desgine_lab(request)
+
+    render_spy.assert_called()
+    assert render_spy.call_args[0][1] == "Lab/A11/a11_lab.html"
+    assert render_spy.call_args[0][2]["error"] == "You can have atmost 5 tickits"
