@@ -951,7 +951,7 @@ def ssrf_lab2(request):
         return render(request, "Lab/ssrf/ssrf_lab2.html")
 
     elif request.method == "POST":
-        url = request.POST["url"]
+        url = "https://<your-safe-endpoint.com>"
         try:
             response = requests.get(url)
             return render(request, "Lab/ssrf/ssrf_lab2.html", {"response": response.content.decode()})
