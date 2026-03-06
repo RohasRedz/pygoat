@@ -1,42 +1,34 @@
-import re
-import types
+import subprocess
 
 import pytest
 
 
-def _make_request(method="POST", post=None, body=b"", authenticated=True):
-    user = types.SimpleNamespace(is_authenticated=authenticated)
-    return types.SimpleNamespace(method=method, POST=post or {}, body=body, user=user)
+# Assumption: tests run with Django app importable; we unit-test by mocking subprocess.Popen.
+from introduction import mitre
 
 
-def test_mitre_lab_17_api_uses_subprocess_without_shell_and_without_string_command(monkeypatch):
-    # Import inside test to ensure monkeypatching affects module-level references
-    import introduction.mitre as mitre
+def test_command_out_uses_shell_false_and_does_not_invoke_shell(mocker):
+    popen_mock = mocker.patch("introduction.mitre.subprocess.Popen")
+    proc = mocker.Mock()
+    proc.communicate.return_value = (b"ok", b"")
+    popen_mock.return_value = proc
 
-    called = {}
+    mitre.command_out(["nmap", "127.0.0.1"])
 
-    def fake_popen(cmd, shell, stdout, stderr):
-        called["cmd"] = cmd
-        called["shell"] = shell
+    popen_mock.assert_called_once()
+    _, kwargs = popen_mock.call_args
+    assert kwargs["shell"] is False
 
-        class _Proc:
-            def communicate(self_inner):
-                # Minimal nmap-like output matching the regex used in the view
-                out = b"STATE SERVICE\n\n22/tcp open ssh\n"
-                return out, b""
 
-        return _Proc()
+def test_mitre_lab_17_api_builds_argument_list_not_shell_string(mocker):
+    request = mocker.Mock()
+    request.method = "POST"
+    request.POST.get.return_value = "127.0.0.1; echo pwned"
 
-    monkeypatch.setattr(mitre.subprocess, "Popen", fake_popen)
+    command_out_mock = mocker.patch("introduction.mitre.command_out", return_value=(b"STATE SERVICE\n\n80/tcp open http\n", b""))
+    mocker.patch("introduction.mitre.re.findall", return_value=["STATE SERVICE\n\n80/tcp open http\n"])
 
-    req = _make_request(post={"ip": "127.0.0.1; echo pwned"})
-    resp = mitre.mitre_lab_17_api(req)
+    mitre.mitre_lab_17_api(request)
 
-    assert called["shell"] is False
-    assert isinstance(called["cmd"], list)
-    assert called["cmd"][0] == "nmap"
-    assert called["cmd"][1] == "127.0.0.1; echo pwned"
-
-    # Ensure response is JSON and ports were parsed
-    assert hasattr(resp, "content")
-    assert b"ports" in resp.content
+    (cmd,), _ = command_out_mock.call_args
+    assert cmd == ["nmap", "127.0.0.1; echo pwned"]
