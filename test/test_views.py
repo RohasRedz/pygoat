@@ -1,28 +1,38 @@
-from types import SimpleNamespace
+import os
 
 import pytest
 
 
 # Assumptions:
-# - Module under test is importable as introduction.views.
+# - Module path is "introduction.views" as implied by file_path.
+from introduction import views
 
 
-def _make_authenticated_request(blog_value: str):
-    user = SimpleNamespace(is_authenticated=True)
-    return SimpleNamespace(method="POST", POST={"blog": blog_value}, user=user)
+def _make_request(blog_value: str, authenticated: bool = True, method: str = "POST"):
+    class _User:
+        is_authenticated = authenticated
+
+    class _Req:
+        def __init__(self):
+            self.user = _User()
+            self.method = method
+            self.POST = {"blog": blog_value}
+
+    return _Req()
 
 
 def test_ssrf_lab_rejects_directory_traversal_and_does_not_open_file(mocker):
-    from introduction import views
+    # Arrange
+    req = _make_request("../secrets.txt")
 
-    request = _make_authenticated_request("../secrets.txt")
+    open_mock = mocker.patch("builtins.open", side_effect=AssertionError("open() should not be called"))
+    render_mock = mocker.patch.object(views, "render", return_value="rendered")
 
-    open_mock = mocker.patch("builtins.open", mocker.mock_open(read_data="SHOULD_NOT_READ"))
-    render_mock = mocker.patch("introduction.views.render", side_effect=lambda req, tpl, ctx=None: {"tpl": tpl, "ctx": ctx})
+    # Act
+    result = views.ssrf_lab(req)
 
-    result = views.ssrf_lab(request)
-
-    # Directory traversal should be rejected and handled by the except branch.
-    assert result["ctx"]["blog"] == "No blog found"
+    # Assert
+    assert result == "rendered"
     open_mock.assert_not_called()
-    assert render_mock.call_args[0][1] == "Lab/ssrf/ssrf_lab.html"
+    # Should fall back to "No blog found" on exception
+    render_mock.assert_called_with(req, "Lab/ssrf/ssrf_lab.html", {"blog": "No blog found"})
