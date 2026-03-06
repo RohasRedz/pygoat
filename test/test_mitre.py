@@ -2,8 +2,6 @@ import subprocess
 
 import pytest
 
-
-# Assumption: tests run with Django app importable; we unit-test by mocking subprocess.Popen.
 from introduction import mitre
 
 
@@ -25,7 +23,10 @@ def test_mitre_lab_17_api_builds_argument_list_not_shell_string(mocker):
     request.method = "POST"
     request.POST.get.return_value = "127.0.0.1; echo pwned"
 
-    command_out_mock = mocker.patch("introduction.mitre.command_out", return_value=(b"STATE SERVICE\n\n80/tcp open http\n", b""))
+    command_out_mock = mocker.patch(
+        "introduction.mitre.command_out",
+        return_value=(b"STATE SERVICE\n\n80/tcp open http\n", b""),
+    )
     mocker.patch("introduction.mitre.re.findall", return_value=["STATE SERVICE\n\n80/tcp open http\n"])
 
     mitre.mitre_lab_17_api(request)
