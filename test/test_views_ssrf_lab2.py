@@ -1,37 +1,31 @@
 import pytest
 
 
-# Assumptions:
-# - Module path is "introduction.views" as implied by file_path.
+# Assumption: tests run with repository root on PYTHONPATH so `introduction` is importable.
 from introduction import views
 
 
-def _make_request(authenticated: bool = True, method: str = "POST"):
-    class _User:
-        is_authenticated = authenticated
+def test_ssrf_lab2_ignores_user_supplied_url_and_uses_safe_endpoint(monkeypatch):
+    captured = {}
 
-    class _Req:
-        def __init__(self):
-            self.user = _User()
-            self.method = method
-            self.POST = {"url": "http://169.254.169.254/latest/meta-data"}
+    def fake_get(url):
+        captured["url"] = url
 
-    return _Req()
+        class Resp:
+            content = b"OK"
 
+        return Resp()
 
-def test_ssrf_lab2_ignores_user_supplied_url_and_uses_safe_endpoint(mocker):
-    # Arrange
-    req = _make_request()
+    monkeypatch.setattr(views.requests, "get", fake_get)
+    monkeypatch.setattr(views, "render", lambda request, template, context=None: {"template": template, "context": context})
 
-    requests_get_mock = mocker.Mock()
-    requests_get_mock.return_value.content = b"ok"
-    mocker.patch.object(views.requests, "get", requests_get_mock)
+    class Req:
+        user = type("U", (), {"is_authenticated": True})()
+        method = "POST"
+        POST = {"url": "http://169.254.169.254/latest/meta-data"}
 
-    mocker.patch.object(views, "render", lambda request, template, ctx=None: {"template": template, "ctx": ctx or {}})
+    resp = views.ssrf_lab2(Req())
 
-    # Act
-    result = views.ssrf_lab2(req)
-
-    # Assert
-    requests_get_mock.assert_called_once_with("https://<your-safe-endpoint.com>")
-    assert result["ctx"]["response"] == "ok"
+    assert captured["url"] == "https://<your-safe-endpoint.com>"
+    assert resp["template"] == "Lab/ssrf/ssrf_lab2.html"
+    assert resp["context"] == {"response": "OK"}
