@@ -1,51 +1,54 @@
+from xml.sax.handler import feature_external_ges
+
 import pytest
 
 
-# Assumptions:
-# - Module path is "introduction.views" as implied by file_path.
+# Assumption: tests run with repository root on PYTHONPATH so `introduction` is importable.
 from introduction import views
 
 
-def _make_request(body: bytes, authenticated: bool = True):
-    class _User:
-        is_authenticated = authenticated
+def test_xxe_parse_disables_external_general_entities(monkeypatch):
+    calls = {}
 
-    class _Req:
-        def __init__(self):
-            self.user = _User()
-            self.body = body
+    class DummyParser:
+        def setFeature(self, feature, value):
+            calls["feature"] = feature
+            calls["value"] = value
 
-    return _Req()
+    def fake_make_parser():
+        return DummyParser()
 
+    # parseString is used later; stub it to avoid real XML parsing and DB access.
+    def fake_parse_string(_xml, parser=None):
+        # Ensure our parser instance is passed through
+        assert isinstance(parser, DummyParser)
+        return []
 
-def test_xxe_parse_disables_external_general_entities(mocker):
-    # Arrange
-    req = _make_request(b"<root><text>Hello</text></root>")
+    # Stub comments ORM chain used at end of xxe_parse
+    class DummyFilter:
+        def update(self, **kwargs):
+            calls["updated_comment"] = kwargs.get("comment")
+            return 1
 
-    parser_mock = mocker.Mock()
-    make_parser_mock = mocker.patch.object(views, "make_parser", return_value=parser_mock)
+    class DummyComments:
+        class objects:
+            @staticmethod
+            def filter(id):
+                return DummyFilter()
 
-    class _Node:
-        tagName = "text"
+    monkeypatch.setattr(views, "make_parser", fake_make_parser)
+    monkeypatch.setattr(views, "parseString", fake_parse_string)
+    monkeypatch.setattr(views, "comments", DummyComments)
+    monkeypatch.setattr(views, "render", lambda request, template, context=None: {"template": template, "context": context})
 
-        def toxml(self):
-            return "<text>Hello</text>"
-
-    class _Doc(list):
-        def expandNode(self, node):
-            return None
-
-    mocker.patch.object(views, "parseString", return_value=_Doc([(views.START_ELEMENT, _Node())]))
-
-    comments_filter_mock = mocker.Mock()
-    comments_filter_mock.update.return_value = 1
-    mocker.patch.object(views.comments.objects, "filter", return_value=comments_filter_mock)
-
-    mocker.patch.object(views, "render", lambda request, template: (template, request))
+    class Req:
+        user = type("U", (), {"is_authenticated": True})()
+        body = b"<root><text>hello</text></root>"
 
     # Act
-    views.xxe_parse(req)
+    resp = views.xxe_parse(Req())
 
-    # Assert
-    make_parser_mock.assert_called_once()
-    parser_mock.setFeature.assert_called_once_with(views.feature_external_ges, False)
+    # Assert: security fix should disable external entities
+    assert calls["feature"] == feature_external_ges
+    assert calls["value"] is False
+    assert resp["template"] == "Lab/XXE/xxe_lab.html"
