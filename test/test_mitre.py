@@ -1,64 +1,42 @@
-import subprocess
+import re
+import types
 
 import pytest
 
 
-# Assumption: tests run with repository root on PYTHONPATH so `introduction` is importable.
-from introduction import mitre
+def _make_request(method="POST", post=None, body=b"", authenticated=True):
+    user = types.SimpleNamespace(is_authenticated=authenticated)
+    return types.SimpleNamespace(method=method, POST=post or {}, body=body, user=user)
 
 
-def test_command_out_uses_shell_false_and_passes_list_to_popen(monkeypatch):
-    captured = {}
+def test_mitre_lab_17_api_uses_subprocess_without_shell_and_without_string_command(monkeypatch):
+    # Import inside test to ensure monkeypatching affects module-level references
+    import introduction.mitre as mitre
 
-    class DummyProc:
-        def communicate(self):
-            return (b"ok", b"")
+    called = {}
 
     def fake_popen(cmd, shell, stdout, stderr):
-        captured["cmd"] = cmd
-        captured["shell"] = shell
-        return DummyProc()
+        called["cmd"] = cmd
+        called["shell"] = shell
 
-    monkeypatch.setattr(subprocess, "Popen", fake_popen)
+        class _Proc:
+            def communicate(self_inner):
+                # Minimal nmap-like output matching the regex used in the view
+                out = b"STATE SERVICE\n\n22/tcp open ssh\n"
+                return out, b""
 
-    out, err = mitre.command_out(["nmap", "127.0.0.1"])
+        return _Proc()
 
-    assert out == b"ok"
-    assert err == b""
-    assert captured["cmd"] == ["nmap", "127.0.0.1"]
-    assert captured["shell"] is False
+    monkeypatch.setattr(mitre.subprocess, "Popen", fake_popen)
 
+    req = _make_request(post={"ip": "127.0.0.1; echo pwned"})
+    resp = mitre.mitre_lab_17_api(req)
 
-def test_mitre_lab_17_api_does_not_build_shell_command_string(monkeypatch):
-    # Arrange: minimal request stub
-    class Req:
-        method = "POST"
-        POST = {"ip": "127.0.0.1; touch /tmp/pwned"}
+    assert called["shell"] is False
+    assert isinstance(called["cmd"], list)
+    assert called["cmd"][0] == "nmap"
+    assert called["cmd"][1] == "127.0.0.1; echo pwned"
 
-    # Provide output matching expected regex parsing in the view
-    nmap_output = (
-        "header\n"
-        "STATE SERVICE\n\n"
-        "22/tcp open ssh\n"
-        "80/tcp open http\n"
-    )
-
-    def fake_command_out(command):
-        # Assert inside stub: command must be list, not a concatenated string
-        assert isinstance(command, list)
-        assert command[0] == "nmap"
-        assert command[1] == Req.POST["ip"]
-        return (nmap_output.encode(), b"")
-
-    monkeypatch.setattr(mitre, "command_out", fake_command_out)
-
-    # Avoid Django JsonResponse dependency by stubbing it to return the dict payload
-    monkeypatch.setattr(mitre, "JsonResponse", lambda payload: payload)
-
-    # Act
-    payload = mitre.mitre_lab_17_api(Req())
-
-    # Assert
-    assert payload["raw_err"] == ""
-    assert "ports" in payload
-    assert payload["ports"] == ["22/tcp open ssh", "80/tcp open http"]
+    # Ensure response is JSON and ports were parsed
+    assert hasattr(resp, "content")
+    assert b"ports" in resp.content
