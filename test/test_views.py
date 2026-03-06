@@ -1,28 +1,37 @@
-from types import SimpleNamespace
-
 import pytest
 
 
 # Assumptions:
-# - Module under test is importable as introduction.views.
+# - Module path is "introduction.views" as implied by file_path.
+from introduction import views
 
 
-def _make_authenticated_request():
-    user = SimpleNamespace(is_authenticated=True)
-    return SimpleNamespace(method="POST", POST={"url": "http://169.254.169.254/latest/meta-data"}, user=user)
+def _make_request(authenticated: bool = True, method: str = "POST"):
+    class _User:
+        is_authenticated = authenticated
+
+    class _Req:
+        def __init__(self):
+            self.user = _User()
+            self.method = method
+            self.POST = {"url": "http://169.254.169.254/latest/meta-data"}
+
+    return _Req()
 
 
 def test_ssrf_lab2_ignores_user_supplied_url_and_uses_safe_endpoint(mocker):
-    from introduction import views
+    # Arrange
+    req = _make_request()
 
-    request = _make_authenticated_request()
+    requests_get_mock = mocker.Mock()
+    requests_get_mock.return_value.content = b"ok"
+    mocker.patch.object(views.requests, "get", requests_get_mock)
 
-    requests_get = mocker.patch("introduction.views.requests.get")
-    requests_get.return_value = SimpleNamespace(content=b"ok")
+    mocker.patch.object(views, "render", lambda request, template, ctx=None: {"template": template, "ctx": ctx or {}})
 
-    mocker.patch("introduction.views.render", side_effect=lambda req, tpl, ctx=None: {"tpl": tpl, "ctx": ctx})
+    # Act
+    result = views.ssrf_lab2(req)
 
-    result = views.ssrf_lab2(request)
-
-    requests_get.assert_called_once_with("https://<your-safe-endpoint.com>")
+    # Assert
+    requests_get_mock.assert_called_once_with("https://<your-safe-endpoint.com>")
     assert result["ctx"]["response"] == "ok"
