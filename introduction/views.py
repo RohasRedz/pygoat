@@ -951,7 +951,10 @@ def ssrf_lab2(request):
         return render(request, "Lab/ssrf/ssrf_lab2.html")
 
     elif request.method == "POST":
-        url = request.POST["url"]
+        # Instead of directly using user-supplied URL, use a safe URL or validate it against an allowlist
+        from django.conf import settings
+        # Instead of directly using user input URL, use safe URL from configuration
+        url = settings.SAFE_BASE_URL
         try:
             response = requests.get(url)
             return render(request, "Lab/ssrf/ssrf_lab2.html", {"response": response.content.decode()})
