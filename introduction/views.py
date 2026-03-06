@@ -916,6 +916,9 @@ def ssrf_lab(request):
             file=request.POST["blog"]
             try :
                 dirname = os.path.dirname(__file__)
+                if os.path.isabs(file) or '..' in file:
+                    # TODO: Replace this with proper error handling or default safe filename
+                    return render(request, "Lab/ssrf/ssrf_lab.html", {"blog": "Invalid file request."})
                 filename = os.path.join(dirname, file)
                 file = open(filename,"r")
                 data = file.read()
