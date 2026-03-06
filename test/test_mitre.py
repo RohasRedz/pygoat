@@ -3,43 +3,62 @@ import subprocess
 import pytest
 
 
-# Assumptions:
-# - Django is available in the test environment.
-# - Module path is "introduction.mitre" as implied by file_path.
+# Assumption: tests run with repository root on PYTHONPATH so `introduction` is importable.
 from introduction import mitre
 
 
-def _make_request(method="POST", post=None, cookies=None):
-    class _Req:
-        def __init__(self):
-            self.method = method
-            self.POST = post or {}
-            self.COOKIES = cookies or {}
+def test_command_out_uses_shell_false_and_passes_list_to_popen(monkeypatch):
+    captured = {}
 
-    return _Req()
+    class DummyProc:
+        def communicate(self):
+            return (b"ok", b"")
+
+    def fake_popen(cmd, shell, stdout, stderr):
+        captured["cmd"] = cmd
+        captured["shell"] = shell
+        return DummyProc()
+
+    monkeypatch.setattr(subprocess, "Popen", fake_popen)
+
+    out, err = mitre.command_out(["nmap", "127.0.0.1"])
+
+    assert out == b"ok"
+    assert err == b""
+    assert captured["cmd"] == ["nmap", "127.0.0.1"]
+    assert captured["shell"] is False
 
 
-def test_mitre_lab_17_api_uses_shell_false_and_argument_list(mocker):
-    # Arrange
-    req = _make_request(method="POST", post={"ip": "127.0.0.1"})
+def test_mitre_lab_17_api_does_not_build_shell_command_string(monkeypatch):
+    # Arrange: minimal request stub
+    class Req:
+        method = "POST"
+        POST = {"ip": "127.0.0.1; touch /tmp/pwned"}
 
-    popen_mock = mocker.Mock()
-    process_mock = mocker.Mock()
-    process_mock.communicate.return_value = (b"STATE SERVICE\n\n22/tcp open ssh\n", b"")
-    popen_mock.return_value = process_mock
+    # Provide output matching expected regex parsing in the view
+    nmap_output = (
+        "header\n"
+        "STATE SERVICE\n\n"
+        "22/tcp open ssh\n"
+        "80/tcp open http\n"
+    )
 
-    mocker.patch.object(mitre.subprocess, "Popen", popen_mock)
+    def fake_command_out(command):
+        # Assert inside stub: command must be list, not a concatenated string
+        assert isinstance(command, list)
+        assert command[0] == "nmap"
+        assert command[1] == Req.POST["ip"]
+        return (nmap_output.encode(), b"")
 
-    # Avoid depending on Django JsonResponse internals; just ensure call path completes.
-    mocker.patch.object(mitre, "JsonResponse", lambda payload: payload)
+    monkeypatch.setattr(mitre, "command_out", fake_command_out)
+
+    # Avoid Django JsonResponse dependency by stubbing it to return the dict payload
+    monkeypatch.setattr(mitre, "JsonResponse", lambda payload: payload)
 
     # Act
-    result = mitre.mitre_lab_17_api(req)
+    payload = mitre.mitre_lab_17_api(Req())
 
     # Assert
-    popen_mock.assert_called_once()
-    args, kwargs = popen_mock.call_args
-    assert args[0] == ["nmap", "127.0.0.1"]
-    assert kwargs.get("shell") is False
-    assert "ports" in result
-    assert result["ports"] == ["22/tcp open ssh"]
+    assert payload["raw_err"] == ""
+    assert "ports" in payload
+    assert payload["ports"] == ["22/tcp open ssh", "80/tcp open http"]
