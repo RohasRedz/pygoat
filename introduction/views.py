@@ -915,11 +915,15 @@ def ssrf_lab(request):
         else:
             file=request.POST["blog"]
             try :
+                allowed_files = { 'blog': 'blog.txt' }
+                if file not in allowed_files:
+                    return render(request, "Lab/ssrf/ssrf_lab.html", {"blog": "Invalid file request"})
+                real_filename = allowed_files[file]
                 dirname = os.path.dirname(__file__)
-                filename = os.path.join(dirname, file)
-                file = open(filename,"r")
-                data = file.read()
-                return render(request,"Lab/ssrf/ssrf_lab.html",{"blog":data})
+                filename = os.path.join(dirname, real_filename)
+                with open(filename, "r") as f:
+                    data = f.read()
+                return render(request, "Lab/ssrf/ssrf_lab.html", {"blog": data})
             except:
                 return render(request, "Lab/ssrf/ssrf_lab.html", {"blog": "No blog found"})
     else:
