@@ -1,37 +1,45 @@
-import re
-from types import SimpleNamespace
+import subprocess
 
 import pytest
 
 
 # Assumptions:
-# - Django project uses standard pytest discovery.
-# - Module under test is importable as introduction.mitre.
+# - Django is available in the test environment.
+# - Module path is "introduction.mitre" as implied by file_path.
+from introduction import mitre
 
 
-def _make_request(ip: str):
-    return SimpleNamespace(method="POST", POST={"ip": ip})
+def _make_request(method="POST", post=None, cookies=None):
+    class _Req:
+        def __init__(self):
+            self.method = method
+            self.POST = post or {}
+            self.COOKIES = cookies or {}
+
+    return _Req()
 
 
-def test_mitre_lab_17_api_uses_shell_false_and_list_command(mocker):
-    from introduction import mitre
-
-    request = _make_request("127.0.0.1")
+def test_mitre_lab_17_api_uses_shell_false_and_argument_list(mocker):
+    # Arrange
+    req = _make_request(method="POST", post={"ip": "127.0.0.1"})
 
     popen_mock = mocker.Mock()
-    popen_mock.communicate.return_value = (
-        b"STATE SERVICE\n\n22/tcp open ssh\n",
-        b"",
-    )
+    process_mock = mocker.Mock()
+    process_mock.communicate.return_value = (b"STATE SERVICE\n\n22/tcp open ssh\n", b"")
+    popen_mock.return_value = process_mock
 
-    popen_ctor = mocker.patch("introduction.mitre.subprocess.Popen", return_value=popen_mock)
-    mocker.patch("introduction.mitre.JsonResponse", side_effect=lambda payload: payload)
+    mocker.patch.object(mitre.subprocess, "Popen", popen_mock)
 
-    result = mitre.mitre_lab_17_api(request)
+    # Avoid depending on Django JsonResponse internals; just ensure call path completes.
+    mocker.patch.object(mitre, "JsonResponse", lambda payload: payload)
 
-    popen_ctor.assert_called_once()
-    args, kwargs = popen_ctor.call_args
+    # Act
+    result = mitre.mitre_lab_17_api(req)
+
+    # Assert
+    popen_mock.assert_called_once()
+    args, kwargs = popen_mock.call_args
     assert args[0] == ["nmap", "127.0.0.1"]
-    assert kwargs["shell"] is False
-
+    assert kwargs.get("shell") is False
+    assert "ports" in result
     assert result["ports"] == ["22/tcp open ssh"]
