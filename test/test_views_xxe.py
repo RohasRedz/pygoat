@@ -1,54 +1,62 @@
-from xml.sax.handler import feature_external_ges
+import types
 
 import pytest
 
 
-# Assumption: tests run with repository root on PYTHONPATH so `introduction` is importable.
-from introduction import views
+def _make_request(body: bytes, authenticated=True):
+    user = types.SimpleNamespace(is_authenticated=authenticated)
+    return types.SimpleNamespace(method="POST", body=body, user=user)
 
 
 def test_xxe_parse_disables_external_general_entities(monkeypatch):
-    calls = {}
+    import introduction.views as views
 
-    class DummyParser:
+    called = {}
+
+    class FakeParser:
         def setFeature(self, feature, value):
-            calls["feature"] = feature
-            calls["value"] = value
+            called["feature"] = feature
+            called["value"] = value
 
     def fake_make_parser():
-        return DummyParser()
+        return FakeParser()
 
-    # parseString is used later; stub it to avoid real XML parsing and DB access.
+    # Minimal pulldom iterator yielding a <text> element
+    class FakeNode:
+        tagName = "text"
+
+        def toxml(self):
+            return "<text>hello</text>"
+
+    class FakeDoc:
+        def __iter__(self):
+            return iter([(views.START_ELEMENT, FakeNode())])
+
+        def expandNode(self, node):
+            return None
+
     def fake_parse_string(_xml, parser=None):
-        # Ensure our parser instance is passed through
-        assert isinstance(parser, DummyParser)
-        return []
+        return FakeDoc()
 
-    # Stub comments ORM chain used at end of xxe_parse
-    class DummyFilter:
-        def update(self, **kwargs):
-            calls["updated_comment"] = kwargs.get("comment")
-            return 1
-
-    class DummyComments:
+    class FakeComments:
         class objects:
             @staticmethod
             def filter(id):
-                return DummyFilter()
+                class _Q:
+                    @staticmethod
+                    def update(comment):
+                        return 1
+
+                return _Q()
 
     monkeypatch.setattr(views, "make_parser", fake_make_parser)
     monkeypatch.setattr(views, "parseString", fake_parse_string)
-    monkeypatch.setattr(views, "comments", DummyComments)
-    monkeypatch.setattr(views, "render", lambda request, template, context=None: {"template": template, "context": context})
+    monkeypatch.setattr(views, "comments", FakeComments)
+    monkeypatch.setattr(views, "render", lambda request, template, context=None: (template, context))
 
-    class Req:
-        user = type("U", (), {"is_authenticated": True})()
-        body = b"<root><text>hello</text></root>"
+    req = _make_request(b"<root><text>hello</text></root>")
+    template, _ctx = views.xxe_parse(req)
 
-    # Act
-    resp = views.xxe_parse(Req())
-
-    # Assert: security fix should disable external entities
-    assert calls["feature"] == feature_external_ges
-    assert calls["value"] is False
-    assert resp["template"] == "Lab/XXE/xxe_lab.html"
+    assert called["feature"] == views.feature_external_ges
+    assert called["value"] is False
+    assert template == "Lab/XXE/xxe_lab.html"
