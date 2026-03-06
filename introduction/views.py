@@ -33,6 +33,7 @@ from django.template.loader import render_to_string
 from django.views.decorators.csrf import csrf_exempt
 from PIL import Image, ImageMath
 from requests.structures import CaseInsensitiveDict
+from django.conf import settings
 
 from .forms import NewUserForm
 from .models import (FAANG, AF_admin, AF_session_id, Blogs, CF_user, authLogin,
@@ -951,7 +952,7 @@ def ssrf_lab2(request):
         return render(request, "Lab/ssrf/ssrf_lab2.html")
 
     elif request.method == "POST":
-        url = request.POST["url"]
+        url = getattr(settings, 'SAFE_URL', 'http://safe.example.com/api')
         try:
             response = requests.get(url)
             return render(request, "Lab/ssrf/ssrf_lab2.html", {"response": response.content.decode()})
