@@ -1,35 +1,63 @@
+import os
+
 import pytest
 
 
-# Assumptions:
-# - Module path is "introduction.views" as implied by file_path.
+# Assumption: tests run with repository root on PYTHONPATH so `introduction` is importable.
 from introduction import views
 
 
-def _make_request(blog_value: str, authenticated: bool = True, method: str = "POST"):
-    class _User:
-        is_authenticated = authenticated
+def test_ssrf_lab_blocks_directory_traversal_and_does_not_open_file(monkeypatch):
+    opened = {"called": False}
 
-    class _Req:
-        def __init__(self):
-            self.user = _User()
-            self.method = method
-            self.POST = {"blog": blog_value}
+    def fake_open(*args, **kwargs):
+        opened["called"] = True
+        raise AssertionError("open() should not be called for traversal paths")
 
-    return _Req()
+    monkeypatch.setattr(views, "open", fake_open, raising=True)
+    monkeypatch.setattr(views, "render", lambda request, template, context=None: {"template": template, "context": context})
+
+    class Req:
+        user = type("U", (), {"is_authenticated": True})()
+        method = "POST"
+        POST = {"blog": "../secrets.txt"}
+
+    resp = views.ssrf_lab(Req())
+
+    assert opened["called"] is False
+    assert resp["template"] == "Lab/ssrf/ssrf_lab.html"
+    assert resp["context"] == {"blog": "No blog found"}
 
 
-def test_ssrf_lab_rejects_directory_traversal_and_does_not_open_file(mocker):
-    # Arrange
-    req = _make_request("../secrets.txt")
+def test_ssrf_lab_uses_basename_when_joining_path(monkeypatch):
+    # Ensure that even if a path contains separators, only basename is used.
+    captured = {}
 
-    open_mock = mocker.patch("builtins.open", side_effect=AssertionError("open() should not be called"))
-    render_mock = mocker.patch.object(views, "render", return_value="rendered")
+    def fake_open(path, mode="r"):
+        captured["path"] = path
 
-    # Act
-    result = views.ssrf_lab(req)
+        class FH:
+            def __enter__(self):
+                return self
 
-    # Assert
-    assert result == "rendered"
-    open_mock.assert_not_called()
-    render_mock.assert_called_with(req, "Lab/ssrf/ssrf_lab.html", {"blog": "No blog found"})
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def read(self):
+                return "BLOG"
+
+        return FH()
+
+    monkeypatch.setattr(views, "open", fake_open, raising=True)
+    monkeypatch.setattr(views, "render", lambda request, template, context=None: {"template": template, "context": context})
+
+    class Req:
+        user = type("U", (), {"is_authenticated": True})()
+        method = "POST"
+        POST = {"blog": "nested/dir/blog.txt"}
+
+    resp = views.ssrf_lab(Req())
+
+    assert resp["context"] == {"blog": "BLOG"}
+    # The joined path should end with basename only
+    assert os.path.basename(captured["path"]) == "blog.txt"
