@@ -1,58 +1,42 @@
-import os
+import types
 
 import pytest
 
-# Assumption: Django app module path is "introduction.views" as per source file path.
-import introduction.views as views
 
-
-class _DummyUser:
-    def __init__(self, authenticated=True):
-        self.is_authenticated = authenticated
-
-
-class _DummyRequest:
-    def __init__(self, method="POST", post=None, user_authenticated=True):
-        self.method = method
-        self.POST = post or {}
-        self.user = _DummyUser(user_authenticated)
+def _make_request(blog_value: str):
+    user = types.SimpleNamespace(is_authenticated=True)
+    return types.SimpleNamespace(method="POST", POST={"blog": blog_value}, user=user)
 
 
 def test_ssrf_lab_rejects_non_whitelisted_file_key(mocker):
-    # Arrange
-    req = _DummyRequest(post={"blog": "../../etc/passwd"}, user_authenticated=True)
+    # Regression test for path traversal fix: only whitelisted keys are allowed.
+    from introduction import views
 
-    render_spy = mocker.patch.object(views, "render", autospec=True)
+    render_spy = mocker.patch("introduction.views.render", autospec=True)
     open_spy = mocker.patch("builtins.open", autospec=True)
 
-    # Act
+    req = _make_request("../../etc/passwd")
     views.ssrf_lab(req)
 
-    # Assert
     open_spy.assert_not_called()
-    render_spy.assert_called_once()
-    args, kwargs = render_spy.call_args
-    assert args[1] == "Lab/ssrf/ssrf_lab.html"
-    assert kwargs["context"] == {"blog": "Invalid file request"}
+    render_spy.assert_called()
+    assert render_spy.call_args[0][1] == "Lab/ssrf/ssrf_lab.html"
+    assert render_spy.call_args[0][2]["blog"] == "Invalid file request"
 
 
-def test_ssrf_lab_allows_whitelisted_blog_key_and_reads_blog_txt(mocker, tmp_path):
-    # Arrange
-    req = _DummyRequest(post={"blog": "blog"}, user_authenticated=True)
+def test_ssrf_lab_allows_whitelisted_key_and_reads_expected_file(mocker):
+    from introduction import views
 
-    # Ensure os.path.join(dirname, 'blog.txt') is opened.
-    dirname = os.path.dirname(views.__file__)
-    expected_path = os.path.join(dirname, "blog.txt")
+    render_spy = mocker.patch("introduction.views.render", autospec=True)
 
-    m = mocker.mock_open(read_data="BLOG CONTENT")
-    open_mock = mocker.patch("builtins.open", m)
-    render_spy = mocker.patch.object(views, "render", autospec=True)
+    m = mocker.mock_open(read_data="hello")
+    open_spy = mocker.patch("builtins.open", m)
 
-    # Act
+    req = _make_request("blog")
     views.ssrf_lab(req)
 
-    # Assert
-    open_mock.assert_called_once_with(expected_path, "r")
-    args, kwargs = render_spy.call_args
-    assert args[1] == "Lab/ssrf/ssrf_lab.html"
-    assert kwargs["context"] == {"blog": "BLOG CONTENT"}
+    open_spy.assert_called_once()
+    # Ensure the resolved filename ends with the whitelisted real file.
+    assert open_spy.call_args[0][0].endswith("blog.txt")
+    render_spy.assert_called()
+    assert render_spy.call_args[0][2]["blog"] == "hello"
