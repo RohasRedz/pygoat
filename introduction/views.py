@@ -693,8 +693,14 @@ def insec_desgine_lab(request):
                 Tickets.append(tkt.tickit)
             try :
                 count = request.POST.get("count")
-                if (int(count)+len(tkts)) <=5:
-                    for i in range(int(count)):
+                try:
+                    validated_count = int(count)
+                except ValueError:
+                    return render(request, "Lab/A11/a11_lab.html", {"error": "Invalid count value provided.", "tickets": Tickets})
+                if validated_count <= 0 or (validated_count + len(tkts)) > 5:
+                    return render(request,"Lab/A11/a11_lab.html",{"error":"You can have atmost 5 tickits","tickets":Tickets})
+                # NOTE: Replace any placeholder text with appropriate values based on business rules.
+                for i in range(validated_count):
                         ticket_code = gentckt()
                         Tickets.append(ticket_code)
                         T = tickits(user = request.user, tickit = ticket_code)
