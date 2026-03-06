@@ -20,6 +20,7 @@ from xml.sax.handler import feature_external_ges
 
 import jwt
 import requests
+from urllib.parse import urljoin
 import yaml
 from argon2 import PasswordHasher
 from django.contrib import messages
@@ -33,6 +34,8 @@ from django.template.loader import render_to_string
 from django.views.decorators.csrf import csrf_exempt
 from PIL import Image, ImageMath
 from requests.structures import CaseInsensitiveDict
+
+SAFE_BASE_URL = 'https://api.safe.domain'
 
 from .forms import NewUserForm
 from .models import (FAANG, AF_admin, AF_session_id, Blogs, CF_user, authLogin,
@@ -951,11 +954,12 @@ def ssrf_lab2(request):
         return render(request, "Lab/ssrf/ssrf_lab2.html")
 
     elif request.method == "POST":
-        url = request.POST["url"]
+        user_input = request.POST.get("url_param", "")
+        safe_url = urljoin(SAFE_BASE_URL, user_input)
         try:
-            response = requests.get(url)
+            response = requests.get(safe_url)
             return render(request, "Lab/ssrf/ssrf_lab2.html", {"response": response.content.decode()})
-        except:
+        except Exception as e:
             return render(request, "Lab/ssrf/ssrf_lab2.html", {"error": "Invalid URL"})
 #--------------------------------------- Server-side template injection --------------------------------------#
 
