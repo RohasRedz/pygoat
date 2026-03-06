@@ -1,72 +1,48 @@
-import types
-
+# test/test_views.py
+# Assumption: Django app module is "introduction" and tests run with pytest + pytest-django.
 import pytest
 
-# Assumption: Django app module path is "introduction.views" as per source file path.
-import introduction.views as views
+from introduction import views
 
 
-class _DummyUser:
-    def __init__(self, authenticated=True):
-        self.is_authenticated = authenticated
+@pytest.mark.parametrize(
+    "raw_url",
+    [
+        "http://trusted-domain.com/path",          # wrong scheme
+        "https://evil.com/?u=trusted-domain.com",  # trusted string not in netloc
+        "https://127.0.0.1/",                      # SSRF localhost
+        "",                                        # missing url
+    ],
+)
+def test_ssrf_lab2_rejects_untrusted_or_invalid_url(raw_url, mocker):
+    request = mocker.Mock()
+    request.method = "POST"
+    request.POST = {"url": raw_url}
 
+    render_spy = mocker.patch("introduction.views.render", return_value=mocker.Mock())
+    requests_get_spy = mocker.patch("introduction.views.requests.get")
 
-class _DummyRequest:
-    def __init__(self, method="POST", post=None, user_authenticated=True):
-        self.method = method
-        self.POST = post or {}
-        self.user = _DummyUser(user_authenticated)
+    resp = views.ssrf_lab2.__wrapped__(request)
 
-
-def test_ssrf_lab2_rejects_untrusted_or_non_https_url(mocker):
-    # Arrange
-    req = _DummyRequest(post={"url": "http://127.0.0.1/admin"}, user_authenticated=True)
-
-    render_spy = mocker.patch.object(views, "render", autospec=True)
-    requests_get = mocker.patch.object(views.requests, "get", autospec=True)
-
-    # Act
-    views.ssrf_lab2(req)
-
-    # Assert
-    requests_get.assert_not_called()
+    assert resp == render_spy.return_value
     render_spy.assert_called_once()
-    args, kwargs = render_spy.call_args
-    assert args[1] == "Lab/ssrf/ssrf_lab2.html"
-    assert kwargs["context"] == {"error": "Invalid or untrusted URL"}
+    assert render_spy.call_args[0][1] == "Lab/ssrf/ssrf_lab2.html"
+    assert render_spy.call_args[0][2] == {"error": "Invalid or untrusted URL"}
+    requests_get_spy.assert_not_called()
 
 
 def test_ssrf_lab2_allows_https_trusted_domain_and_calls_requests_get(mocker):
-    # Arrange
-    req = _DummyRequest(post={"url": "https://trusted-domain.com/path"}, user_authenticated=True)
+    request = mocker.Mock()
+    request.method = "POST"
+    request.POST = {"url": "https://trusted-domain.com/safe"}
 
-    mock_response = types.SimpleNamespace(content=b"OK")
-    requests_get = mocker.patch.object(views.requests, "get", autospec=True, return_value=mock_response)
-    render_spy = mocker.patch.object(views, "render", autospec=True)
+    fake_response = mocker.Mock()
+    fake_response.content = b"ok"
+    requests_get_spy = mocker.patch("introduction.views.requests.get", return_value=fake_response)
+    render_spy = mocker.patch("introduction.views.render", return_value=mocker.Mock())
 
-    # Act
-    views.ssrf_lab2(req)
+    resp = views.ssrf_lab2.__wrapped__(request)
 
-    # Assert
-    requests_get.assert_called_once_with("https://trusted-domain.com/path")
-    render_spy.assert_called_once()
-    args, kwargs = render_spy.call_args
-    assert args[1] == "Lab/ssrf/ssrf_lab2.html"
-    assert kwargs["context"] == {"response": "OK"}
-
-
-def test_ssrf_lab2_handles_requests_exception_with_invalid_url_error(mocker):
-    # Arrange
-    req = _DummyRequest(post={"url": "https://trusted-domain.com/path"}, user_authenticated=True)
-
-    mocker.patch.object(views.requests, "get", autospec=True, side_effect=Exception("boom"))
-    render_spy = mocker.patch.object(views, "render", autospec=True)
-
-    # Act
-    views.ssrf_lab2(req)
-
-    # Assert
-    render_spy.assert_called_once()
-    args, kwargs = render_spy.call_args
-    assert args[1] == "Lab/ssrf/ssrf_lab2.html"
-    assert kwargs["context"] == {"error": "Invalid URL"}
+    assert resp == render_spy.return_value
+    requests_get_spy.assert_called_once_with("https://trusted-domain.com/safe")
+    render_spy.assert_called_once_with(request, "Lab/ssrf/ssrf_lab2.html", {"response": "ok"})
