@@ -951,11 +951,17 @@ def ssrf_lab2(request):
         return render(request, "Lab/ssrf/ssrf_lab2.html")
 
     elif request.method == "POST":
-        url = request.POST["url"]
+        raw_url = request.POST.get('url', '')
+        # Validate the user input and restrict to a safe domain
+        from urllib.parse import urlparse
+        parsed_url = urlparse(raw_url)
+        if parsed_url.scheme != 'https' or 'trusted-domain.com' not in parsed_url.netloc:
+            return render(request, "Lab/ssrf/ssrf_lab2.html", {"error": "Invalid or untrusted URL"})
+        url = raw_url
         try:
             response = requests.get(url)
             return render(request, "Lab/ssrf/ssrf_lab2.html", {"response": response.content.decode()})
-        except:
+        except Exception as e:
             return render(request, "Lab/ssrf/ssrf_lab2.html", {"error": "Invalid URL"})
 #--------------------------------------- Server-side template injection --------------------------------------#
 
