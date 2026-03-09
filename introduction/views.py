@@ -951,7 +951,14 @@ def ssrf_lab2(request):
         return render(request, "Lab/ssrf/ssrf_lab2.html")
 
     elif request.method == "POST":
-        url = request.POST["url"]
+        url_key = request.POST.get("url_key")
+        safe_urls = {
+            'option1': 'https://safe1.example.com/api',
+            'option2': 'https://safe2.example.com/api'
+        }
+        url = safe_urls.get(url_key)
+        if not url:
+            return render(request, "Lab/ssrf/ssrf_lab2.html", {"error": "Invalid or unauthorized URL"})
         try:
             response = requests.get(url)
             return render(request, "Lab/ssrf/ssrf_lab2.html", {"response": response.content.decode()})
