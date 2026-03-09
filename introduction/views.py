@@ -915,11 +915,20 @@ def ssrf_lab(request):
         else:
             file=request.POST["blog"]
             try :
+                # Define a mapping of allowed file keys to safe file names (update whitelist as necessary)
+                ALLOWED_FILES = {'blog': 'blog.txt', 'news': 'news.txt'}
+                allowed_file = ALLOWED_FILES.get(file)
+                if not allowed_file:
+                    return render(request, 'Lab/ssrf/ssrf_lab.html', {'blog': 'Invalid file selection'})
                 dirname = os.path.dirname(__file__)
-                filename = os.path.join(dirname, file)
-                file = open(filename,"r")
+                filename = os.path.join(dirname, allowed_file)
+                safe_dir = os.path.realpath(dirname)
+                resolved_path = os.path.realpath(filename)
+                if not resolved_path.startswith(safe_dir):
+                    return render(request, 'Lab/ssrf/ssrf_lab.html', {'blog': 'Access Denied'})
+                file = open(resolved_path, 'r')
                 data = file.read()
-                return render(request,"Lab/ssrf/ssrf_lab.html",{"blog":data})
+                return render(request, 'Lab/ssrf/ssrf_lab.html', {'blog': data})
             except:
                 return render(request, "Lab/ssrf/ssrf_lab.html", {"blog": "No blog found"})
     else:
