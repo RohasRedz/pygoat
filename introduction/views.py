@@ -951,9 +951,17 @@ def ssrf_lab2(request):
         return render(request, "Lab/ssrf/ssrf_lab2.html")
 
     elif request.method == "POST":
-        url = request.POST["url"]
+        user_url = request.POST["url"]
+        # Validate the user provided URL against allowed domains
+        from urllib.parse import urlparse
+        allowed_domains = ["safe.com", "example.com"]  # TODO: Replace with allowed domains as per business logic
+        parsed_url = urlparse(user_url)
+        if parsed_url.netloc not in allowed_domains:
+            safe_url = "https://safe.example.com/default"  # Fallback safe URL or modify logic as needed
+        else:
+            safe_url = user_url
         try:
-            response = requests.get(url)
+            response = requests.get(safe_url)
             return render(request, "Lab/ssrf/ssrf_lab2.html", {"response": response.content.decode()})
         except:
             return render(request, "Lab/ssrf/ssrf_lab2.html", {"error": "Invalid URL"})
