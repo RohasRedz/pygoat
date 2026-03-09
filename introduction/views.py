@@ -916,7 +916,12 @@ def ssrf_lab(request):
             file=request.POST["blog"]
             try :
                 dirname = os.path.dirname(__file__)
-                filename = os.path.join(dirname, file)
+                safe_files = {'blog': 'blog.txt'}
+                safe_filename = safe_files.get(file)
+                if safe_filename is None:
+                    from django.http import Http404
+                    raise Http404('File not found or access denied')
+                filename = os.path.join(dirname, safe_filename)
                 file = open(filename,"r")
                 data = file.read()
                 return render(request,"Lab/ssrf/ssrf_lab.html",{"blog":data})
