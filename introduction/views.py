@@ -915,6 +915,9 @@ def ssrf_lab(request):
         else:
             file=request.POST["blog"]
             try :
+                # Validate the 'file' input to ensure it does not contain forbidden patterns
+                if '..' in file or os.path.isabs(file):
+                    raise ValueError('Invalid file path provided')
                 dirname = os.path.dirname(__file__)
                 filename = os.path.join(dirname, file)
                 file = open(filename,"r")
