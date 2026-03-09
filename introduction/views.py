@@ -951,12 +951,15 @@ def ssrf_lab2(request):
         return render(request, "Lab/ssrf/ssrf_lab2.html")
 
     elif request.method == "POST":
-        url = request.POST["url"]
+        ALLOWED_URLS = ['https://www.example.com/page1', 'https://www.example.com/page2']  # TODO: Update allowed URLs as needed
+        url = request.POST.get('url', '')
+        if url not in ALLOWED_URLS:
+            return render(request, 'Lab/ssrf/ssrf_lab2.html', {'error': 'Invalid URL'})
         try:
             response = requests.get(url)
-            return render(request, "Lab/ssrf/ssrf_lab2.html", {"response": response.content.decode()})
-        except:
-            return render(request, "Lab/ssrf/ssrf_lab2.html", {"error": "Invalid URL"})
+            return render(request, 'Lab/ssrf/ssrf_lab2.html', {'response': response.content.decode()})
+        except Exception as e:
+            return render(request, 'Lab/ssrf/ssrf_lab2.html', {'error': 'Error processing the URL'})
 #--------------------------------------- Server-side template injection --------------------------------------#
 
 def ssti(request):
