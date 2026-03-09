@@ -916,6 +916,8 @@ def ssrf_lab(request):
             file=request.POST["blog"]
             try :
                 dirname = os.path.dirname(__file__)
+                # Sanitize the user input to eliminate directory traversal
+                file = os.path.basename(file)  # TODO: Add additional validation if necessary
                 filename = os.path.join(dirname, file)
                 file = open(filename,"r")
                 data = file.read()
