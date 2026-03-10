@@ -916,8 +916,13 @@ def ssrf_lab(request):
             file=request.POST["blog"]
             try :
                 dirname = os.path.dirname(__file__)
-                filename = os.path.join(dirname, file)
-                file = open(filename,"r")
+                # Resolve the absolute path of the intended file
+                proposed_path = os.path.abspath(os.path.join(dirname, file))
+                # Ensure the proposed_path is within the allowed directory
+                if not proposed_path.startswith(os.path.abspath(dirname) + os.sep):
+                    raise ValueError('Invalid file path provided: directory traversal detected')
+                file_path = proposed_path
+                file = open(file_path,"r")
                 data = file.read()
                 return render(request,"Lab/ssrf/ssrf_lab.html",{"blog":data})
             except:
