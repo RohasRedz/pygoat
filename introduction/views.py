@@ -917,7 +917,11 @@ def ssrf_lab(request):
             try :
                 dirname = os.path.dirname(__file__)
                 filename = os.path.join(dirname, file)
-                file = open(filename,"r")
+                abs_path = os.path.abspath(filename)
+                if not abs_path.startswith(os.path.dirname(__file__)):
+                    # TODO: Replace with appropriate error handling
+                    raise Exception('Invalid file access: outside allowed directory')
+                file = open(abs_path,"r")
                 data = file.read()
                 return render(request,"Lab/ssrf/ssrf_lab.html",{"blog":data})
             except:
