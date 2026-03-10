@@ -10,6 +10,10 @@ SECRET_KEY = 'django-insecure-key-for-demonstration-only'
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
+# Ensure CSRF cookie is only transmitted over HTTPS (production only; adjust accordingly for local development)
+CSRF_COOKIE_SECURE = True
+SESSION_COOKIE_SECURE = True
+
 ALLOWED_HOSTS = ['*']
 
 # Application definition
