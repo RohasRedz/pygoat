@@ -4,6 +4,7 @@ import hashlib
 import json
 import logging
 import os
+import re  # new import for regex validation
 import pickle
 import random
 import re
@@ -915,7 +916,12 @@ def ssrf_lab(request):
         else:
             file=request.POST["blog"]
             try :
+                # Validate the 'file' parameter
+                if re.search(r'(\.{2,})', file) or os.path.isabs(file):
+                    return render(request, "Lab/ssrf/ssrf_lab.html", {"blog": "Invalid file path provided."})
                 dirname = os.path.dirname(__file__)
+                if re.search(r'(\.{2,})', file) or os.path.isabs(file) :
+                    return render(request, "Lab/ssrf/ssrf_lab.html", {"blog": "Invalid file path provided."})
                 filename = os.path.join(dirname, file)
                 file = open(filename,"r")
                 data = file.read()
