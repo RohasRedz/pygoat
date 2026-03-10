@@ -914,7 +914,18 @@ def ssrf_lab(request):
             return render(request,"Lab/ssrf/ssrf_lab.html",{"blog":"Read Blog About SSRF"})
         else:
             file=request.POST["blog"]
+            # Validate the file parameter to prevent directory traversal
+            normalized_file = os.path.normpath(file)
+            if normalized_file.startswith("..") or os.path.isabs(normalized_file):
+                # Optionally, log an error or set a default safe filename
+                return render(request, "Lab/ssrf/ssrf_lab.html", {"blog": "Invalid file path provided."})
             try :
+                # Validate the file parameter to prevent directory traversal
+                normalized_file = os.path.normpath(file)
+                if normalized_file.startswith('..') or os.path.isabs(normalized_file):
+                    # Optionally, log an error or set a default safe filename
+                    return render(request, "Lab/ssrf/ssrf_lab.html", {"blog": "Invalid file path provided."})
+                file = normalized_file
                 dirname = os.path.dirname(__file__)
                 filename = os.path.join(dirname, file)
                 file = open(filename,"r")
