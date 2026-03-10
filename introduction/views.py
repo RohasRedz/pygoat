@@ -917,6 +917,14 @@ def ssrf_lab(request):
             try :
                 dirname = os.path.dirname(__file__)
                 filename = os.path.join(dirname, file)
+                trusted_dir = os.path.abspath(dirname)
+                canonical_path = os.path.abspath(filename)
+                if not canonical_path.startswith(trusted_dir + os.sep):
+                    raise Exception('Invalid file path')
+                trusted_dir = os.path.abspath(dirname)
+                canonical_path = os.path.abspath(filename)
+                if not canonical_path.startswith(trusted_dir + os.sep):
+                    raise Exception('Invalid file path')
                 file = open(filename,"r")
                 data = file.read()
                 return render(request,"Lab/ssrf/ssrf_lab.html",{"blog":data})
