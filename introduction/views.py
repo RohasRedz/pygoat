@@ -915,11 +915,16 @@ def ssrf_lab(request):
         else:
             file=request.POST["blog"]
             try :
-                dirname = os.path.dirname(__file__)
-                filename = os.path.join(dirname, file)
-                file = open(filename,"r")
-                data = file.read()
-                return render(request,"Lab/ssrf/ssrf_lab.html",{"blog":data})
+                allowed_files = {'blog.txt', 'news.txt'}  # TODO: Update allowed filenames as appropriate
+                if file not in allowed_files:
+                    return render(request, "Lab/ssrf/ssrf_lab.html", {"blog": "Invalid file"})
+                safe_dir = os.path.realpath(os.path.dirname(__file__))
+                filename = os.path.realpath(os.path.join(safe_dir, file))
+                if not filename.startswith(safe_dir):
+                    raise ValueError('Invalid file path provided')
+                with open(filename, "r") as f:
+                    data = f.read()
+                return render(request, "Lab/ssrf/ssrf_lab.html", {"blog": data})
             except:
                 return render(request, "Lab/ssrf/ssrf_lab.html", {"blog": "No blog found"})
     else:
