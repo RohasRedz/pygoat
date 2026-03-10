@@ -10,6 +10,13 @@ SECRET_KEY = 'django-insecure-key-for-demonstration-only'
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
+if not DEBUG:
+    # Enforce HTTPS by setting HSTS (HTTP Strict Transport Security)
+    # Replace the placeholder value 31536000 with an appropriate duration in seconds
+    SECURE_HSTS_SECONDS = 31536000  # 1 year in seconds
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+
 ALLOWED_HOSTS = ['*']
 
 # Application definition
