@@ -916,6 +916,17 @@ def ssrf_lab(request):
             file=request.POST["blog"]
             try :
                 dirname = os.path.dirname(__file__)
+                # Validate 'file' input: disallow directory traversal and absolute paths
+                import os
+                if '..' in file or os.path.isabs(file):
+                    # Optionally, log an error or raise an exception
+                    return render(request, 'Lab/ssrf/ssrf_lab.html', {'blog': 'Invalid file path'})
+                # Optionally force cleanup using os.path.basename
+                file = os.path.basename(file)
+                # Validate 'file' input: disallow directory traversal and absolute paths
+                if '..' in file or os.path.isabs(file):
+                    return render(request, 'Lab/ssrf/ssrf_lab.html', {'blog': 'Invalid file path'})
+                file = os.path.basename(file)
                 filename = os.path.join(dirname, file)
                 file = open(filename,"r")
                 data = file.read()
