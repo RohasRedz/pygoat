@@ -10,6 +10,10 @@ SECRET_KEY = 'django-insecure-key-for-demonstration-only'
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
+# Enable secure cookies for production environments
+SESSION_COOKIE_SECURE = True
+CSRF_COOKIE_SECURE = True
+
 ALLOWED_HOSTS = ['*']
 
 # Application definition
