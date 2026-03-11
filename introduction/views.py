@@ -700,16 +700,18 @@ def insec_desgine_lab(request):
                 Tickets.append(tkt.tickit)
             try :
                 count = request.POST.get("count")
-                if (int(count)+len(tkts)) <=5:
-                    for i in range(int(count)):
-                        ticket_code = gentckt()
-                        Tickets.append(ticket_code)
-                        T = tickits(user = request.user, tickit = ticket_code)
-                        T.save()
-                    
-                    return render(request,"Lab/A11/a11_lab.html",{"tickets":Tickets})
-                else:
-                    return render(request,"Lab/A11/a11_lab.html",{"error":"You can have atmost 5 tickits","tickets":Tickets})
+                try:
+                    userCount = int(count)
+                except ValueError:
+                    return render(request, "Lab/A11/a11_lab.html", {"error": "Invalid input for count.", "tickets": Tickets})
+                if userCount < 0 or (userCount + len(tkts)) > 5:
+                    return render(request, "Lab/A11/a11_lab.html", {"error": "Invalid ticket count. Maximum allowed exceeded.", "tickets": Tickets})
+                for i in range(userCount):
+                    ticket_code = gentckt()
+                    Tickets.append(ticket_code)
+                    T = tickits(user = request.user, tickit = ticket_code)
+                    T.save()
+                return render(request, "Lab/A11/a11_lab.html", {"tickets": Tickets})
             except:
                 try :
                     tickit = request.POST.get("ticket")
