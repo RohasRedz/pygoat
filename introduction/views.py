@@ -923,6 +923,10 @@ def ssrf_lab(request):
             file=request.POST["blog"]
             try :
                 dirname = os.path.dirname(__file__)
+                # Validate that the provided file name does not contain directory traversal sequences or is an absolute path
+                if '..' in file or os.path.isabs(file):
+                    from django.http import HttpResponseBadRequest  # Ensure this import is present if not already imported
+                    return HttpResponseBadRequest('Invalid file path provided. Please provide a safe file name.')
                 filename = os.path.join(dirname, file)
                 file = open(filename,"r")
                 data = file.read()
