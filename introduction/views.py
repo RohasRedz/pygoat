@@ -922,10 +922,18 @@ def ssrf_lab(request):
         else:
             file=request.POST["blog"]
             try :
+                # Secure file access: use whitelist to determine allowed file paths. TODO: Update whitelist as necessary.
+                allowed_files = {
+                    'blog1': 'blog1.txt',  # TODO: Update with actual allowed mappings
+                    'blog2': 'blog2.txt'
+                }
+                safe_filename = allowed_files.get(file)
+                if safe_filename is None:
+                    return render(request, "Lab/ssrf/ssrf_lab.html", {"blog": "No blog found"})
                 dirname = os.path.dirname(__file__)
-                filename = os.path.join(dirname, file)
-                file = open(filename,"r")
-                data = file.read()
+                filepath = os.path.join(dirname, safe_filename)
+                with open(filepath, "r") as f:
+                    data = f.read()
                 return render(request,"Lab/ssrf/ssrf_lab.html",{"blog":data})
             except:
                 return render(request, "Lab/ssrf/ssrf_lab.html", {"blog": "No blog found"})
