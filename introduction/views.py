@@ -923,8 +923,16 @@ def ssrf_lab(request):
             file=request.POST["blog"]
             try :
                 dirname = os.path.dirname(__file__)
-                filename = os.path.join(dirname, file)
-                file = open(filename,"r")
+                # Normalize and validate user-provided file path to prevent directory traversal attacks
+                normalized_file = os.path.normpath(file)
+                if os.path.isabs(normalized_file):
+                    # TODO: Replace error handling with appropriate action
+                    raise ValueError("Absolute paths are not allowed")
+                abs_path = os.path.abspath(os.path.join(dirname, normalized_file))
+                if not abs_path.startswith(os.path.abspath(dirname) + os.path.sep):
+                    # TODO: Replace error handling with appropriate action
+                    raise ValueError("Directory traversal detected")
+                file = open(abs_path,"r")
                 data = file.read()
                 return render(request,"Lab/ssrf/ssrf_lab.html",{"blog":data})
             except:
