@@ -4,6 +4,7 @@ import hashlib
 import json
 import logging
 import os
+import urllib.parse
 import pickle
 import random
 import re
@@ -958,9 +959,14 @@ def ssrf_lab2(request):
         return render(request, "Lab/ssrf/ssrf_lab2.html")
 
     elif request.method == "POST":
-        url = request.POST["url"]
+        raw_url = request.POST.get("url", "")
+        parsed_url = urllib.parse.urlparse(raw_url)
+        allowed_hosts = ['example.com', 'api.example.com']
+        if parsed_url.hostname not in allowed_hosts:
+            return render(request, "Lab/ssrf/ssrf_lab2.html", {"error": "Invalid URL"})
+        safe_url = parsed_url.geturl()
         try:
-            response = requests.get(url)
+            response = requests.get(safe_url)
             return render(request, "Lab/ssrf/ssrf_lab2.html", {"response": response.content.decode()})
         except:
             return render(request, "Lab/ssrf/ssrf_lab2.html", {"error": "Invalid URL"})
