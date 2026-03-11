@@ -951,7 +951,8 @@ def ssrf_lab2(request):
         return render(request, "Lab/ssrf/ssrf_lab2.html")
 
     elif request.method == "POST":
-        url = request.POST["url"]
+        # FIXME: Replace with allowed URL or whitelist logic as needed. Do not construct the URL directly from user input.
+        url = "https://allowed.example.com"
         try:
             response = requests.get(url)
             return render(request, "Lab/ssrf/ssrf_lab2.html", {"response": response.content.decode()})
