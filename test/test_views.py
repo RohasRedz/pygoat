@@ -1,34 +1,33 @@
+import types
+
 import pytest
 
 
-def test_ssrf_lab_uses_basename_to_prevent_path_traversal(mocker):
-    """Regression: ssrf_lab must strip directory components from user-supplied filename."""
+# Assumptions:
+# - Django is installed and importable in the test environment.
+# - The project module path is "introduction.views".
+
+
+def _make_request(*, method="POST", authenticated=True, post=None):
+    user = types.SimpleNamespace(is_authenticated=authenticated)
+    return types.SimpleNamespace(method=method, user=user, POST=post or {}, META={}, COOKIES={})
+
+
+def test_ssrf_lab_strips_directory_traversal_from_blog_filename(mocker):
     from introduction import views
 
-    # Arrange
-    request = mocker.Mock()
-    request.user.is_authenticated = True
-    request.method = "POST"
-    request.POST = {"blog": "../../etc/passwd"}
+    request = _make_request(post={"blog": "../../etc/passwd"})
 
-    dirname = "/app/introduction"
-    mocker.patch.object(views.os.path, "dirname", return_value=dirname)
+    # Ensure open() is called with a path that uses basename only ("passwd")
+    open_mock = mocker.patch("builtins.open", mocker.mock_open(read_data="SAFE"))
 
-    # Ensure basename is used and join is called with the sanitized name
-    basename_mock = mocker.patch.object(views.os.path, "basename", wraps=views.os.path.basename)
-    join_mock = mocker.patch.object(views.os.path, "join", wraps=views.os.path.join)
+    render_mock = mocker.patch.object(views, "render", autospec=True)
 
-    # Avoid real file IO
-    fake_file = mocker.Mock()
-    fake_file.read.return_value = "BLOG_CONTENT"
-    mocker.patch.object(views, "open", return_value=fake_file, create=True)
-
-    render_mock = mocker.patch.object(views, "render", return_value=mocker.Mock())
-
-    # Act
     views.ssrf_lab(request)
 
-    # Assert
-    basename_mock.assert_called_once_with("../../etc/passwd")
-    join_mock.assert_called_with(dirname, "passwd")
-    render_mock.assert_called_with(request, "Lab/ssrf/ssrf_lab.html", {"blog": "BLOG_CONTENT"})
+    # open should be called with a filename ending in "passwd" (no traversal segments)
+    called_path = open_mock.call_args[0][0]
+    assert called_path.endswith("passwd")
+    assert ".." not in called_path
+
+    render_mock.assert_called_with(request, "Lab/ssrf/ssrf_lab.html", {"blog": "SAFE"})
