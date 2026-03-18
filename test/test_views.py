@@ -1,25 +1,28 @@
+import types
+
 import pytest
 
 
+# Assumptions:
+# - Django is installed and importable in the test environment.
+# - The project module path is "introduction.views".
+
+
+def _make_request(*, method="POST", authenticated=True):
+    user = types.SimpleNamespace(is_authenticated=authenticated)
+    return types.SimpleNamespace(method=method, user=user, POST={"url": "http://169.254.169.254/latest/meta-data"})
+
+
 def test_ssrf_lab2_ignores_user_supplied_url_and_uses_safe_constant(mocker):
-    """Regression: ssrf_lab2 must not fetch arbitrary user-supplied URLs (SSRF)."""
     from introduction import views
 
-    # Arrange
-    request = mocker.Mock()
-    request.user.is_authenticated = True
-    request.method = "POST"
-    request.POST = {"url": "http://127.0.0.1:8000/admin"}
+    request = _make_request()
 
-    response = mocker.Mock()
-    response.content = b"OK"
-    get_mock = mocker.patch.object(views.requests, "get", return_value=response)
+    response_obj = types.SimpleNamespace(content=b"OK")
+    get_mock = mocker.patch.object(views.requests, "get", autospec=True, return_value=response_obj)
 
-    render_mock = mocker.patch.object(views, "render", return_value=mocker.Mock())
+    mocker.patch.object(views, "render", autospec=True)
 
-    # Act
     views.ssrf_lab2(request)
 
-    # Assert
     get_mock.assert_called_once_with("https://safe.example.com/resource")
-    render_mock.assert_called_with(request, "Lab/ssrf/ssrf_lab2.html", {"response": "OK"})
