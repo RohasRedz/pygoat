@@ -1,25 +1,39 @@
+import types
+
 import pytest
 
 
+# Assumptions:
+# - Django is installed and importable in the test environment.
+# - The project module path is "introduction.views".
+
+
+def _make_request(*, authenticated=True, body=b"<root><text>hi</text></root>"):
+    user = types.SimpleNamespace(is_authenticated=authenticated)
+    return types.SimpleNamespace(user=user, body=body)
+
+
 def test_xxe_parse_disables_external_general_entities(mocker):
-    """Regression: xxe_parse must disable external general entities to prevent XXE."""
     from introduction import views
 
-    # Arrange
-    parser = mocker.Mock()
-    make_parser_mock = mocker.patch.object(views, "make_parser", return_value=parser)
+    request = _make_request()
 
-    # Stub parseString so we don't parse real XML; return empty iterator.
-    mocker.patch.object(views, "parseString", return_value=[])
+    parser_mock = mocker.Mock()
+    make_parser_mock = mocker.patch.object(views, "make_parser", autospec=True, return_value=parser_mock)
 
-    request = mocker.Mock()
-    request.body = b"<root><text>hello</text></root>"
+    # Avoid real XML parsing; just ensure parseString is called with our parser
+    pulldom_doc = [(views.START_ELEMENT, types.SimpleNamespace(tagName="text", toxml=lambda: "<text>hi</text>"))]
+    parse_string_mock = mocker.patch.object(views, "parseString", autospec=True, return_value=pulldom_doc)
 
-    # Act + Assert
-    # The function will raise because `text` is never set when parseString yields nothing.
-    # We intentionally accept this to focus only on the security-relevant behavior change.
-    with pytest.raises(UnboundLocalError):
-        views.xxe_parse(request)
+    # comments.objects.filter(...).update(...) should be callable
+    comments_model = mocker.Mock()
+    comments_model.objects.filter.return_value.update.return_value = 1
+    mocker.patch.object(views, "comments", comments_model)
+
+    mocker.patch.object(views, "render", autospec=True)
+
+    views.xxe_parse(request)
 
     make_parser_mock.assert_called_once()
-    parser.setFeature.assert_any_call(views.feature_external_ges, False)
+    parser_mock.setFeature.assert_called_with(views.feature_external_ges, False)
+    parse_string_mock.assert_called_once()
