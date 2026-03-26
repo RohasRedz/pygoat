@@ -923,8 +923,16 @@ def ssrf_lab(request):
             file=request.POST["blog"]
             try :
                 dirname = os.path.dirname(__file__)
+                # Validate user-provided file variable to prevent path traversal vulnerabilities
+                if os.path.isabs(file) or '..' in file:
+                    # TODO: Replace error handling with appropriate response
+                    return render(request, "Lab/ssrf/ssrf_lab.html", {"blog": "Invalid file path"})
                 filename = os.path.join(dirname, file)
-                file = open(filename,"r")
+                normalized_path = os.path.normpath(filename)
+                if not normalized_path.startswith(dirname):
+                    # TODO: Replace error handling with appropriate response
+                    return render(request, "Lab/ssrf/ssrf_lab.html", {"blog": "Access denied"})
+                file = open(normalized_path, "r")
                 data = file.read()
                 return render(request,"Lab/ssrf/ssrf_lab.html",{"blog":data})
             except:
